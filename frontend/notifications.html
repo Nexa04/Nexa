@@ -306,6 +306,313 @@
 
 
     <script src="script.js"></script>
+    <script>
+
+const token =
+    localStorage.getItem("access_token");
+
+
+// =========================
+// Load Notification Settings
+// =========================
+
+async function loadNotificationSettings() {
+
+    if (!token) {
+        window.location.href = "index.html";
+        return;
+    }
+
+    try {
+
+        const response = await fetch(
+            "http://127.0.0.1:8000/settings",
+            {
+                method: "GET",
+                headers: {
+                    "Authorization":
+                        "Bearer " + token
+                }
+            }
+        );
+
+        const data =
+            await response.json();
+
+        if (!response.ok) {
+
+            console.error(
+                "Could not load settings:",
+                data
+            );
+
+            return;
+        }
+
+        document.getElementById(
+            "messageNotifications"
+        ).checked =
+            data.message_notifications;
+
+        document.getElementById(
+            "groupNotifications"
+        ).checked =
+            data.group_notifications;
+
+        document.getElementById(
+            "vibrationNotifications"
+        ).checked =
+            data.vibration;
+
+        document.getElementById(
+            "safetyAlerts"
+        ).checked =
+            data.safety_alerts;
+
+        document.getElementById(
+            "threatAlerts"
+        ).checked =
+            data.threat_detection_alerts;
+
+        document.getElementById(
+            "notificationSoundValue"
+        ).textContent =
+            data.notification_sound;
+
+    } catch (error) {
+
+        console.error(
+            "Load notification settings error:",
+            error
+        );
+
+    }
+}
+
+
+// =========================
+// Save Notification Setting
+// =========================
+
+async function saveNotificationSetting(settingId) {
+
+    const input =
+        document.getElementById(settingId);
+
+    let settingName;
+    let settingValue;
+
+    if (settingId === "messageNotifications") {
+
+        settingName =
+            "message_notifications";
+
+        settingValue =
+            input.checked;
+
+    }
+
+    else if (settingId === "groupNotifications") {
+
+        settingName =
+            "group_notifications";
+
+        settingValue =
+            input.checked;
+
+    }
+
+    else if (settingId === "vibrationNotifications") {
+
+        settingName =
+            "vibration";
+
+        settingValue =
+            input.checked;
+
+    }
+
+    else if (settingId === "safetyAlerts") {
+
+        settingName =
+            "safety_alerts";
+
+        settingValue =
+            input.checked;
+
+    }
+
+    else if (settingId === "threatAlerts") {
+
+        settingName =
+            "threat_detection_alerts";
+
+        settingValue =
+            input.checked;
+
+    }
+
+    else {
+        return;
+    }
+
+
+    try {
+
+        const response = await fetch(
+            "http://127.0.0.1:8000/settings",
+            {
+                method: "PUT",
+
+                headers: {
+                    "Content-Type":
+                        "application/json",
+
+                    "Authorization":
+                        "Bearer " + token
+                },
+
+                body: JSON.stringify({
+                    [settingName]:
+                        settingValue
+                })
+            }
+        );
+
+        const data =
+            await response.json();
+
+        if (!response.ok) {
+
+            console.error(
+                "Save notification setting failed:",
+                data
+            );
+
+            return;
+        }
+
+        console.log(
+            "Setting saved:",
+            settingName,
+            settingValue
+        );
+
+    } catch (error) {
+
+        console.error(
+            "Save notification setting error:",
+            error
+        );
+
+    }
+}
+
+
+// =========================
+// Notification Sound
+// =========================
+
+function openNotificationSound() {
+
+    document.getElementById(
+        "notificationSoundPopup"
+    ).style.display = "flex";
+
+}
+
+
+async function selectNotificationSound(sound) {
+
+    document.getElementById(
+        "notificationSoundValue"
+    ).textContent = sound;
+
+    document.getElementById(
+        "notificationSoundPopup"
+    ).style.display = "none";
+
+
+    try {
+
+        const response = await fetch(
+            "http://127.0.0.1:8000/settings",
+            {
+                method: "PUT",
+
+                headers: {
+                    "Content-Type":
+                        "application/json",
+
+                    "Authorization":
+                        "Bearer " + token
+                },
+
+                body: JSON.stringify({
+                    notification_sound:
+                        sound
+                })
+            }
+        );
+
+        const data =
+            await response.json();
+
+        if (!response.ok) {
+
+            console.error(
+                "Save notification sound failed:",
+                data
+            );
+
+        }
+
+    } catch (error) {
+
+        console.error(
+            "Save notification sound error:",
+            error
+        );
+
+    }
+
+}
+
+
+// =========================
+// Close Sound Popup
+// =========================
+
+function closeNotificationPopup(event) {
+
+    if (
+        event.target.id ===
+        "notificationSoundPopup"
+    ) {
+
+        document.getElementById(
+            "notificationSoundPopup"
+        ).style.display = "none";
+
+    }
+
+}
+
+
+// =========================
+// Load Settings When Page Opens
+// =========================
+
+document.addEventListener(
+    "DOMContentLoaded",
+    function() {
+
+        loadNotificationSettings();
+
+    }
+);
+
+</script>
 
 </body>
 

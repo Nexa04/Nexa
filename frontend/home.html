@@ -53,7 +53,20 @@
             <span>+</span>
             <span>New group</span>
         </button>
+<button class="more-menu-item"
+        onclick="window.location.href='notifications2.html'">
 
+    <span class="notification-bell">🔔</span>
+
+    <span>
+        Notifications
+        <span id="notificationCount"
+              class="notification-count">
+            0
+        </span>
+    </span>
+
+</button>
         <button class="more-menu-item">
             <span>☆</span>
             <span>Starred messages</span>
@@ -119,23 +132,29 @@
              Empty Chats
         ========================== -->
 
-        <main class="empty-chats">
+       <main class="home-chats" id="homeChats">
 
-            <div class="empty-icon">
-                💬
-            </div>
+    <div class="empty-chats" id="emptyChats">
 
-            <h2>No conversations yet</h2>
+        <div class="empty-icon">
+            💬
+        </div>
 
-            <p>
-                Start a conversation with someone.
-            </p>
+        <h2>No conversations yet</h2>
 
-            <button class="start-chat" onclick="window.location.href='new-chat.html'">
-    Start a new chat
-</button>
+        <p>
+            Start a conversation with someone.
+        </p>
 
-        </main>
+        <button
+            class="start-chat"
+            onclick="window.location.href='new-chat.html'">
+            Start a new chat
+        </button>
+
+    </div>
+
+</main>
 
 
         <!-- =========================
@@ -196,7 +215,279 @@ function showFilter(type, button) {
 }
 
 </script>
+<script>
 
+async function loadHomeChats() {
+
+    const token =
+        localStorage.getItem("access_token");
+
+    if (!token) {
+        window.location.href = "index.html";
+        return;
+    }
+
+    const homeChats =
+        document.getElementById("homeChats");
+
+    const emptyChats =
+        document.getElementById("emptyChats");
+
+    try {
+
+        const response = await fetch(
+            "http://127.0.0.1:8000/conversations",
+            {
+                method: "GET",
+                headers: {
+                    "Authorization":
+                        "Bearer " + token
+                }
+            }
+        );
+
+        const data =
+            await response.json();
+
+        if (!response.ok) {
+
+            console.error(
+                "Could not load conversations:",
+                data
+            );
+
+            return;
+        }
+
+        const conversations =
+            data.conversations || [];
+
+        /*
+         * No conversations
+         */
+        if (conversations.length === 0) {
+
+            emptyChats.style.display = "flex";
+
+            return;
+        }
+
+        /*
+         * There are conversations
+         */
+        emptyChats.style.display = "none";
+
+        homeChats.innerHTML = "";
+
+        conversations.forEach(function(conversation) {
+
+            if (!conversation.other_user) {
+                return;
+            }
+
+            const user =
+                conversation.other_user;
+
+            const chatItem =
+                document.createElement("div");
+
+            chatItem.className =
+                "home-chat-item";
+
+            chatItem.innerHTML = `
+
+                <div class="home-chat-avatar">
+                    ${
+                        user.profile_picture
+                        ? `<img src="${user.profile_picture}">`
+                        : "👤"
+                    }
+                </div>
+
+                <div class="home-chat-info">
+
+                    <h3>
+                        ${user.full_name || "User"}
+                    </h3>
+
+                    <p>
+                        Tap to open conversation
+                    </p>
+
+                </div>
+
+            `;
+
+            chatItem.addEventListener(
+                "click",
+                async function() {
+
+                    try {
+
+                        const response =
+                            await fetch(
+                                "http://127.0.0.1:8000/conversations",
+                                {
+                                    method: "POST",
+                                    headers: {
+                                        "Content-Type":
+                                            "application/json",
+                                        "Authorization":
+                                            "Bearer " + token
+                                    },
+                                    body: JSON.stringify({
+                                        user_id:
+                                            user.user_id
+                                    })
+                                }
+                            );
+
+                        const data =
+                            await response.json();
+
+                        if (!response.ok) {
+
+                            alert(
+                                data.detail ||
+                                "Could not open chat."
+                            );
+
+                            return;
+                        }
+
+                        localStorage.setItem(
+                            "chatUser",
+                            user.full_name || "User"
+                        );
+
+                        localStorage.setItem(
+                            "chatUserId",
+                            user.user_id
+                        );
+
+                        localStorage.setItem(
+                            "conversationId",
+                            data.conversation_id
+                        );
+
+                        window.location.href =
+                            "chat.html";
+
+                    } catch (error) {
+
+                        console.error(
+                            "Open chat error:",
+                            error
+                        );
+
+                        alert(
+                            "Cannot connect to Nexa server."
+                        );
+                    }
+
+                }
+            );
+
+            homeChats.appendChild(
+                chatItem
+            );
+
+        });
+
+    } catch (error) {
+
+        console.error(
+            "Load home chats error:",
+            error
+        );
+    }
+}
+
+
+document.addEventListener(
+    "DOMContentLoaded",
+    function() {
+
+        loadHomeChats();
+
+    }
+);
+
+</script>
+<script>
+
+async function loadNotificationCount() {
+
+    const token =
+        localStorage.getItem("access_token");
+
+    if (!token) {
+        return;
+    }
+
+    try {
+
+        const response = await fetch(
+            "http://127.0.0.1:8000/notifications",
+            {
+                method: "GET",
+                headers: {
+                    "Authorization":
+                        "Bearer " + token
+                }
+            }
+        );
+
+        const data =
+            await response.json();
+
+        if (!response.ok) {
+            return;
+        }
+
+        const notifications =
+            data.notifications || [];
+
+        const unreadCount =
+            notifications.filter(
+                function(notification) {
+                    return !notification.is_read;
+                }
+            ).length;
+
+        const countElement =
+            document.getElementById(
+                "notificationCount"
+            );
+
+        if (countElement) {
+
+            countElement.textContent =
+                unreadCount;
+
+        }
+
+    } catch (error) {
+
+        console.error(
+            "Load notification count error:",
+            error
+        );
+
+    }
+}
+
+
+document.addEventListener(
+    "DOMContentLoaded",
+    function() {
+
+        loadNotificationCount();
+
+    }
+);
+
+</script>
 </body>
 
 </html>

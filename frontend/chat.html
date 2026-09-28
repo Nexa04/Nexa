@@ -43,15 +43,6 @@
                 <button class="chat-action">
                     ☎
                 </button>
-
-                <button class="chat-action">
-                    ◉
-                </button>
-
-                <button class="chat-action">
-                    ⋮
-                </button>
-
             </div>
 
         </header>
@@ -254,24 +245,83 @@ async function loadMessages() {
             // Message Content
             // =========================
 
-            messageElement.innerHTML = `
-                <div class="message-text">
-                    ${message.message_text}
-                </div>
+            let messageStatus = "";
 
-                ${
-                    Number(message.sender_id)
-                    === currentUserId
+if (
+    Number(message.sender_id) === currentUserId
+) {
 
-                    ? `
-                        <div class="message-status">
-                            ✓
-                        </div>
-                      `
+    try {
 
-                    : ""
+        const statusResponse = await fetch(
+            "http://127.0.0.1:8000/messages/"
+            + message.message_id
+            + "/status",
+            {
+                method: "GET",
+
+                headers: {
+                    "Authorization":
+                        "Bearer " + token
                 }
-            `;
+            }
+        );
+
+        const statusData =
+            await statusResponse.json();
+
+        if (statusResponse.ok) {
+
+            if (statusData.status === "read") {
+
+                messageStatus = "✓✓";
+
+            } else if (
+                statusData.status === "delivered"
+            ) {
+
+                messageStatus = "✓✓";
+
+            } else {
+
+                messageStatus = "✓";
+
+            }
+
+        } else {
+
+            messageStatus = "✓";
+
+        }
+
+    } catch (error) {
+
+        console.error(
+            "Get message status error:",
+            error
+        );
+
+        messageStatus = "✓";
+
+    }
+}
+
+
+messageElement.innerHTML = `
+    <div class="message-text">
+        ${message.message_text}
+    </div>
+
+    ${
+        Number(message.sender_id) === currentUserId
+        ? `
+            <div class="message-status">
+                ${messageStatus}
+            </div>
+          `
+        : ""
+    }
+`;
 
 
             messagesArea.appendChild(

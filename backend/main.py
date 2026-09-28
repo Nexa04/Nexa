@@ -621,7 +621,6 @@ def create_conversation(
 # -------------------------
 # Get My Conversations
 # -------------------------
-
 @app.get("/conversations")
 def get_my_conversations(
     current_user: User = Depends(get_current_user),
@@ -644,10 +643,15 @@ def get_my_conversations(
 
     for conversation in conversations:
 
+        # =========================
+        # Get Other User
+        # =========================
+
         participants = db.query(
             ConversationParticipant
         ).filter(
-            ConversationParticipant.conversation_id == conversation.id
+            ConversationParticipant.conversation_id
+            == conversation.id
         ).all()
 
         other_user = None
@@ -662,23 +666,134 @@ def get_my_conversations(
 
                 break
 
+
+        # =========================
+        # Get Last Message
+        # =========================
+
+        last_message = db.query(Message).filter(
+            Message.conversation_id == conversation.id
+        ).order_by(
+            Message.sent_at.desc()
+        ).first()
+
+
+        last_message_text = None
+        last_message_time = None
+
+        if last_message:
+
+            last_message_text = (
+                last_message.message_text
+            )
+
+            last_message_time = (
+                last_message.sent_at
+            )
+
+
+        # =========================
+        # Count Unread Messages
+        # =========================
+
+        unread_count = 0
+
+        messages = db.query(Message).filter(
+            Message.conversation_id == conversation.id,
+            Message.sender_id != current_user.id
+        ).all()
+
+        for message in messages:
+
+            message_status = db.query(
+                MessageStatus
+            ).filter(
+                MessageStatus.message_id == message.id,
+                MessageStatus.user_id == current_user.id
+            ).first()
+
+            # No status = unread
+            if message_status is None:
+
+                unread_count += 1
+
+            # Status exists but isn't read
+            elif message_status.status != "read":
+
+                unread_count += 1
+
+
+        # =========================
+        # Conversation Data
+        # =========================
+
         conversation_data = {
-            "conversation_id": conversation.id,
-            "conversation_type": conversation.conversation_type,
-            "created_at": conversation.created_at,
-            "other_user": None
+
+            "conversation_id":
+                conversation.id,
+
+            "conversation_type":
+                conversation.conversation_type,
+
+            "created_at":
+                conversation.created_at,
+
+            "other_user":
+                None,
+
+            "last_message":
+                last_message_text,
+
+            "last_message_time":
+                last_message_time,
+
+            "unread_count":
+                unread_count
         }
 
+
+        # =========================
+        # Add Other User
+        # =========================
+
         if other_user:
+
             conversation_data["other_user"] = {
-                "user_id": other_user.id,
-                "full_name": other_user.full_name,
-                "username": other_user.username,
-                "profile_picture": other_user.profile_picture,
-                "about": other_user.about
+
+                "user_id":
+                    other_user.id,
+
+                "full_name":
+                    other_user.full_name,
+
+                "username":
+                    other_user.username,
+
+                "profile_picture":
+                    other_user.profile_picture,
+
+                "about":
+                    other_user.about
             }
 
-        result.append(conversation_data)
+
+        result.append(
+            conversation_data
+        )
+
+
+    # =========================
+    # Latest Conversation First
+    # =========================
+
+    result.sort(
+        key=lambda x:
+            x["last_message_time"]
+            if x["last_message_time"]
+            else x["created_at"],
+        reverse=True
+    )
+
 
     return {
         "conversations": result
@@ -686,7 +801,6 @@ def get_my_conversations(
 # -------------------------
 # Send Message
 # -------------------------
-
 @app.post("/conversations/{conversation_id}/messages")
 def send_message(
     conversation_id: int,
@@ -695,7 +809,10 @@ def send_message(
     db: Session = Depends(get_db)
 ):
 
-    # Check conversation
+    # =========================
+    # Check Conversation
+    # =========================
+
     conversation = db.query(Conversation).filter(
         Conversation.id == conversation_id
     ).first()
@@ -706,8 +823,14 @@ def send_message(
             detail="Conversation not found"
         )
 
-    # Check if current user is a participant
-    participant = db.query(ConversationParticipant).filter(
+
+    # =========================
+    # Check Participant
+    # =========================
+
+    participant = db.query(
+        ConversationParticipant
+    ).filter(
         ConversationParticipant.conversation_id == conversation_id,
         ConversationParticipant.user_id == current_user.id
     ).first()
@@ -718,14 +841,22 @@ def send_message(
             detail="You are not a participant in this conversation"
         )
 
-    # Check empty message
+
+    # =========================
+    # Check Empty Message
+    # =========================
+
     if not message_data.message_text.strip():
         raise HTTPException(
             status_code=400,
             detail="Message cannot be empty"
         )
 
-    # Create message
+
+    # =========================
+    # Create Message
+    # =========================
+
     new_message = Message(
         conversation_id=conversation_id,
         sender_id=current_user.id,
@@ -735,60 +866,107 @@ def send_message(
     db.add(new_message)
     db.commit()
     db.refresh(new_message)
-    # Analyze message using AI
+
+
+    # =========================
+    # Analyze Message Using AI
+    # =========================
+
     analysis = analyze_message(
         new_message.message_text
     )
 
-# Save threat analysis only if the message is not safe
+
+    # =========================
+    # Save Threat Analysis
+    # Only if message is not safe
+    # =========================
+
     if analysis["risk_level"] != "safe":
 
         new_threat = Threat(
-        message_id=new_message.id,
-        threat_type=analysis["threat_type"],
-        risk_level=analysis["risk_level"],
-        confidence=analysis["confidence"]
-    )
-
-        db.add(new_threat)
-        db.commit()
-        db.refresh(new_threat)
-
-    # Create safety alert for the other participants
-    participants = db.query(ConversationParticipant).filter(
-        ConversationParticipant.conversation_id == conversation_id,
-        ConversationParticipant.user_id != current_user.id
-    ).all()
-
-    for participant in participants:
-
-        new_notification = Notification(
-            user_id=participant.user_id,
-            notification_type="threat_alert",
-            title="Safety Alert",
-            notification_text=(
-                f"A potentially unsafe message was detected. "
-                f"Risk level: {analysis['risk_level']}"
-            ),
-            is_read=False
+            message_id=new_message.id,
+            threat_type=analysis["threat_type"],
+            risk_level=analysis["risk_level"],
+            confidence=analysis["confidence"]
         )
 
-        db.add(new_notification)
+        db.add(new_threat)
+
+
+    # =========================
+    # Create Safety Alert
+    # Only if message is not safe
+    # =========================
+
+    if analysis["risk_level"] != "safe":
+
+        participants = db.query(
+            ConversationParticipant
+        ).filter(
+            ConversationParticipant.conversation_id == conversation_id,
+            ConversationParticipant.user_id != current_user.id
+        ).all()
+
+        for participant in participants:
+
+            # Get notification settings
+            user_settings = db.query(
+                UserSettings
+            ).filter(
+                UserSettings.user_id == participant.user_id
+            ).first()
+
+
+            # Create default settings
+            # if they don't exist
+            if user_settings is None:
+
+                user_settings = UserSettings(
+                    user_id=participant.user_id
+                )
+
+                db.add(user_settings)
+                db.flush()
+
+
+            # Send alert only if enabled
+            if user_settings.threat_detection_alerts:
+
+                new_notification = Notification(
+                    user_id=participant.user_id,
+                    notification_type="threat_alert",
+                    title="Safety Alert",
+                    notification_text=(
+                        f"A potentially unsafe message was detected. "
+                        f"Risk level: {analysis['risk_level']}"
+                    ),
+                    is_read=False
+                )
+
+                db.add(new_notification)
+
+
+    # =========================
+    # Save Everything
+    # =========================
 
     db.commit()
 
-# THIS MUST BE OUTSIDE THE IF
+
+    # =========================
+    # Return Result
+    # =========================
+
     return {
-    "message": "Message sent successfully",
-    "message_id": new_message.id,
-    "conversation_id": new_message.conversation_id,
-    "sender_id": new_message.sender_id,
-    "message_text": new_message.message_text,
-    "sent_at": new_message.sent_at,
-    "threat_analysis": analysis
-}
-
-
+        "message": "Message sent successfully",
+        "message_id": new_message.id,
+        "conversation_id": new_message.conversation_id,
+        "sender_id": new_message.sender_id,
+        "message_text": new_message.message_text,
+        "sent_at": new_message.sent_at,
+        "threat_analysis": analysis
+    }
 # -------------------------
 # Get Conversation Messages
 # -------------------------
@@ -923,6 +1101,9 @@ def update_message_status(
 # -------------------------
 # Get Message Status
 # -------------------------
+# -------------------------
+# Get Message Status
+# -------------------------
 
 @app.get("/messages/{message_id}/status")
 def get_message_status(
@@ -942,7 +1123,7 @@ def get_message_status(
             detail="Message not found"
         )
 
-    # Check if user belongs to the conversation
+    # Check if current user belongs to the conversation
     participant = db.query(ConversationParticipant).filter(
         ConversationParticipant.conversation_id == message.conversation_id,
         ConversationParticipant.user_id == current_user.id
@@ -954,23 +1135,35 @@ def get_message_status(
             detail="You are not a participant in this conversation"
         )
 
-    # Get status
-    message_status = db.query(MessageStatus).filter(
+    # Get status of recipients
+    recipient_statuses = db.query(MessageStatus).join(
+        ConversationParticipant,
+        MessageStatus.user_id == ConversationParticipant.user_id
+    ).filter(
         MessageStatus.message_id == message_id,
-        MessageStatus.user_id == current_user.id
-    ).first()
+        ConversationParticipant.conversation_id == message.conversation_id,
+        MessageStatus.user_id != message.sender_id
+    ).all()
 
-    if message_status is None:
-        return {
-            "message_id": message_id,
-            "status": "sent"
-        }
+    # Default status
+    current_status = "sent"
+
+    # Check if any recipient has read the message
+    for status in recipient_statuses:
+
+        if status.status == "read":
+            current_status = "read"
+            break
+
+        elif (
+            status.status == "delivered"
+            and current_status == "sent"
+        ):
+            current_status = "delivered"
 
     return {
         "message_id": message_id,
-        "user_id": current_user.id,
-        "status": message_status.status,
-        "updated_at": message_status.updated_at
+        "status": current_status
     }
 # -------------------------
 # Create Notification Request
@@ -1071,6 +1264,34 @@ def get_my_notifications(
 
     return {
         "notifications": result
+    }
+@app.put("/notifications/{notification_id}/read")
+def mark_notification_as_read(
+    notification_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+
+    notification = db.query(Notification).filter(
+        Notification.id == notification_id,
+        Notification.user_id == current_user.id
+    ).first()
+
+    if notification is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Notification not found"
+        )
+
+    notification.is_read = True
+
+    db.commit()
+    db.refresh(notification)
+
+    return {
+        "message": "Notification marked as read",
+        "notification_id": notification.id,
+        "is_read": notification.is_read
     }
 # -------------------------
 # Mark Notification As Read

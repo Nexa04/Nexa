@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0">
+
+    <title>Nexa - Notifications</title>
+
+    <link
+        rel="stylesheet"
+        href="style.css">
+
+</head>
+
+<body>
+
+    <div class="notifications-page">
+
+
+        <!-- =========================
+             Header
+        ========================= -->
+
+        <header class="notifications-page-header">
+
+            <button
+                class="notifications-page-back"
+                onclick="history.back()">
+
+                ←
+
+            </button>
+
+            <h1>
+                Notifications
+            </h1>
+
+        </header>
+
+
+        <!-- =========================
+             Notifications List
+        ========================= -->
+
+        <main
+            class="notifications-page-list"
+            id="notificationsList">
+
+            <p class="no-notifications">
+                Loading notifications...
+            </p>
+
+        </main>
+
+
+    </div>
+
+
+    <script>
+
+        // =========================
+        // Get Login Information
+        // =========================
+
+        const token =
+            localStorage.getItem("access_token");
+
+
+        // =========================
+        // Check Login
+        // =========================
+
+        if (!token) {
+
+            window.location.href =
+                "index.html";
+
+        }
+
+
+        // =========================
+        // Load Notifications
+        // =========================
+
+        async function loadNotifications() {
+
+            const notificationsList =
+                document.getElementById(
+                    "notificationsList"
+                );
+
+
+            try {
+
+                const response =
+                    await fetch(
+                        "http://127.0.0.1:8000/notifications",
+                        {
+                            method: "GET",
+
+                            headers: {
+                                "Authorization":
+                                    "Bearer " + token
+                            }
+                        }
+                    );
+
+
+                const data =
+                    await response.json();
+
+
+                // =========================
+                // Check Response
+                // =========================
+
+                if (!response.ok) {
+
+                    notificationsList.innerHTML = `
+                        <p class="no-notifications">
+
+                            ${
+                                data.detail ||
+                                "Could not load notifications."
+                            }
+
+                        </p>
+                    `;
+
+                    return;
+
+                }
+
+
+                // =========================
+                // Get Notifications
+                // =========================
+
+                const notifications =
+                    data.notifications || [];
+
+
+                // =========================
+                // No Notifications
+                // =========================
+
+                if (notifications.length === 0) {
+
+                    notificationsList.innerHTML = `
+                        <p class="no-notifications">
+
+                            No notifications yet.
+
+                        </p>
+                    `;
+
+                    return;
+
+                }
+
+
+                // =========================
+                // Clear Loading
+                // =========================
+
+                notificationsList.innerHTML = "";
+
+
+                // =========================
+                // Display Notifications
+                // =========================
+
+                notifications.forEach(
+                    function(notification) {
+
+                        const item =
+                            document.createElement(
+                                "div"
+                            );
+
+
+                        item.className =
+                            "notification-page-item";
+
+
+                        // =========================
+                        // Unread Notification
+                        // =========================
+
+                        if (!notification.is_read) {
+
+                            item.classList.add(
+                                "unread-notification"
+                            );
+
+                        }
+
+
+                        // =========================
+                        // Threat Notification
+                        // =========================
+
+                        if (
+                            notification.notification_type
+                            === "threat_alert"
+                        ) {
+
+                            item.classList.add(
+                                "threat-notification"
+                            );
+
+                        }
+
+
+                        // =========================
+                        // Notification Content
+                        // =========================
+
+                        item.innerHTML = `
+
+                            <div
+                                class="notification-page-icon">
+
+                                ${
+                                    notification.notification_type
+                                    === "threat_alert"
+                                    ? "⚠"
+                                    : "●"
+                                }
+
+                            </div>
+
+
+                            <div
+                                class="notification-page-content">
+
+                                <h3>
+                                    ${notification.title}
+                                </h3>
+
+                                <p>
+                                    ${notification.notification_text}
+                                </p>
+
+                                <small>
+                                    ${notification.created_at}
+                                </small>
+
+                            </div>
+
+                        `;
+
+
+                        // =========================
+                        // Mark as Read
+                        // =========================
+
+                        item.addEventListener(
+                            "click",
+                            async function() {
+
+                                // Already read
+                                if (
+                                    notification.is_read
+                                ) {
+
+                                    return;
+
+                                }
+
+
+                                try {
+
+                                    const response =
+                                        await fetch(
+                                            "http://127.0.0.1:8000/notifications/"
+                                            + notification.notification_id
+                                            + "/read",
+                                            {
+                                                method: "PUT",
+
+                                                headers: {
+                                                    "Authorization":
+                                                        "Bearer " + token
+                                                }
+                                            }
+                                        );
+
+
+                                    const data =
+                                        await response.json();
+
+
+                                    if (!response.ok) {
+
+                                        console.error(
+                                            "Mark notification as read failed:",
+                                            data
+                                        );
+
+                                        return;
+
+                                    }
+
+
+                                    // Update state
+                                    notification.is_read =
+                                        true;
+
+
+                                    // Remove unread style
+                                    item.classList.remove(
+                                        "unread-notification"
+                                    );
+
+
+                                } catch (error) {
+
+                                    console.error(
+                                        "Mark notification as read error:",
+                                        error
+                                    );
+
+                                }
+
+                            }
+                        );
+
+
+                        // =========================
+                        // Add Notification
+                        // =========================
+
+                        notificationsList.appendChild(
+                            item
+                        );
+
+                    }
+                );
+
+
+            } catch (error) {
+
+                console.error(
+                    "Load notifications error:",
+                    error
+                );
+
+
+                notificationsList.innerHTML = `
+                    <p class="no-notifications">
+
+                        Cannot connect to Nexa server.
+
+                    </p>
+                `;
+
+            }
+
+        }
+
+
+        // =========================
+        // Load On Page Open
+        // =========================
+
+        document.addEventListener(
+            "DOMContentLoaded",
+            function() {
+
+                loadNotifications();
+
+            }
+        );
+
+    </script>
+
+
+</body>
+
+</html>
