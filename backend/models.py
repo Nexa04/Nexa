@@ -1,9 +1,7 @@
-from sqlalchemy import Column, Integer, String, Text, Boolean, TIMESTAMP
+from sqlalchemy import Column, Integer, String, Text, Boolean, TIMESTAMP 
 from sqlalchemy.sql import func
 
 from backend.database import Base
-
-
 # -------------------------
 # User Model
 # -------------------------
@@ -210,6 +208,20 @@ class Message(Base):
     message_text = Column(
         Text,
         nullable=False
+    )
+    attachment_url = Column(
+        String(500),
+        nullable=True
+    )
+
+    attachment_type = Column(
+        String(30),
+        nullable=True
+    )
+
+    attachment_name = Column(
+        String(255),
+        nullable=True
     )
 
     sent_at = Column(
@@ -543,6 +555,46 @@ class Threat(Base):
     )
 
     detected_at = Column(
+        TIMESTAMP,
+        server_default=func.current_timestamp()
+    )
+    
+# -------------------------
+# Report Model
+# -------------------------
+
+class Report(Base):
+    __tablename__ = "reports"
+
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True,
+        autoincrement=True
+    )
+
+    user_id = Column(
+        Integer,
+        nullable=True
+    )
+
+    issue_type = Column(
+        String(100),
+        nullable=False
+    )
+
+    description = Column(
+        Text,
+        nullable=False
+    )
+
+    status = Column(
+        String(20),
+        nullable=False,
+        default="open"
+    )
+
+    created_at = Column(
         TIMESTAMP,
         server_default=func.current_timestamp()
     )

@@ -1,8 +1,23 @@
+import secrets
+import time
 from datetime import datetime
+from fileinput import filename
 from fastapi import FastAPI, Depends, HTTPException
 from pydantic import BaseModel
+class ProblemReport(BaseModel):
+    issue_type: str
+    description: str
 from sqlalchemy.orm import Session
+from fastapi import UploadFile, File
+import os
+import smtplib
+from email.message import EmailMessage
+import uuid
+from fastapi.staticfiles import StaticFiles
 import bcrypt
+class CreateGroupRequest(BaseModel):
+    group_name: str
+    member_ids: list[int]
 from backend.models import (
     User,
     Contact,
@@ -15,7 +30,8 @@ from backend.models import (
     Call,
     UserSettings,
     SupportRequest,
-    Threat
+    Threat,
+    Report
 )
 from backend.auth import (
     create_access_token,
@@ -26,6 +42,30 @@ from backend.database import engine, Base, get_db
 from ai.threat_detector import analyze_message
 from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI()
+# =========================
+# Phone OTP Storage
+# =========================
+
+phone_otp_storage = {}
+# =========================
+# Email Configuration
+# =========================
+
+REPORT_EMAIL = "nexa0427@gmail.com"
+
+SMTP_EMAIL = os.getenv("SMTP_EMAIL")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+# =========================
+# Upload Directory
+# =========================
+
+UPLOAD_DIR = "backend/uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+app.mount(
+    "/uploads",
+    StaticFiles(directory="backend/uploads"),
+    name="uploads"
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -63,10 +103,10 @@ class LoginRequest(BaseModel):
 # -------------------------
 # Update Profile Request
 # -------------------------
-
 class UpdateProfileRequest(BaseModel):
     full_name: str | None = None
     username: str | None = None
+    email: str | None = None
     about: str | None = None
     profile_picture: str | None = None
 
@@ -256,6 +296,91 @@ def get_my_profile(
 
 
 # -------------------------
+# Update My Profile
+# -------------------------
+
+@app.put("/users/me")
+def update_my_profile(
+    user_data: UpdateProfileRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+
+    # Check username
+    if user_data.username is not None:
+
+        existing_username = db.query(User).filter(
+            User.username == user_data.username,
+            User.id != current_user.id
+        ).first()
+
+        if existing_username:
+            raise HTTPException(
+                status_code=400,
+                detail="Username already exists"
+            )
+
+        current_user.username = user_data.username
+    if user_data.email is not None:
+        existing_email = db.query(User).filter(
+        User.email == user_data.email,
+        User.id != current_user.id
+             ).first()
+
+    if existing_email:
+        raise HTTPException(
+            status_code=400,
+            detail="Email already exists"
+        )
+
+    current_user.email = user_data.email
+    if user_data.email is not None:
+         current_user.email = user_data.email
+    # Update full name
+    if user_data.full_name is not None:
+        current_user.full_name = user_data.full_name
+
+    # Update about
+    if user_data.about is not None:
+        current_user.about = user_data.about
+
+    # Update profile picture
+    if user_data.profile_picture is not None:
+        current_user.profile_picture = user_data.profile_picture
+
+    db.commit()
+    db.refresh(current_user)
+
+    return {
+        "message": "Profile updated successfully",
+        "user_id": current_user.id,
+        "full_name": current_user.full_name,
+        "username": current_user.username,
+        "about": current_user.about,
+        "profile_picture": current_user.profile_picture,
+        "email": current_user.email
+    }
+
+# -------------------------
+# Get My Profile
+# -------------------------
+
+@app.get("/users/me")
+def get_my_profile(
+    current_user: User = Depends(get_current_user)
+):
+
+    return {
+        "user_id": current_user.id,
+        "full_name": current_user.full_name,
+        "username": current_user.username,
+        "email": current_user.email,
+        "phone": current_user.phone,
+        "profile_picture": current_user.profile_picture,
+        "about": current_user.about
+    }
+
+# -------------------------
 # Get User By ID
 # -------------------------
 
@@ -285,57 +410,6 @@ def get_user(
         "about": user.about
     }
 
-
-# -------------------------
-# Update My Profile
-# -------------------------
-
-@app.put("/users/me")
-def update_my_profile(
-    user_data: UpdateProfileRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-
-    # Check username
-    if user_data.username is not None:
-
-        existing_username = db.query(User).filter(
-            User.username == user_data.username,
-            User.id != current_user.id
-        ).first()
-
-        if existing_username:
-            raise HTTPException(
-                status_code=400,
-                detail="Username already exists"
-            )
-
-        current_user.username = user_data.username
-
-    # Update full name
-    if user_data.full_name is not None:
-        current_user.full_name = user_data.full_name
-
-    # Update about
-    if user_data.about is not None:
-        current_user.about = user_data.about
-
-    # Update profile picture
-    if user_data.profile_picture is not None:
-        current_user.profile_picture = user_data.profile_picture
-
-    db.commit()
-    db.refresh(current_user)
-
-    return {
-        "message": "Profile updated successfully",
-        "user_id": current_user.id,
-        "full_name": current_user.full_name,
-        "username": current_user.username,
-        "about": current_user.about,
-        "profile_picture": current_user.profile_picture
-    }
 
 
 # -------------------------
@@ -729,28 +803,31 @@ def get_my_conversations(
 
         conversation_data = {
 
-            "conversation_id":
-                conversation.id,
+    "conversation_id":
+        conversation.id,
 
-            "conversation_type":
-                conversation.conversation_type,
+    "conversation_type":
+        conversation.conversation_type,
 
-            "created_at":
-                conversation.created_at,
+    "created_at":
+        conversation.created_at,
 
-            "other_user":
-                None,
+    "group_name":
+        conversation.group_name,
 
-            "last_message":
-                last_message_text,
+    "other_user":
+        None,
 
-            "last_message_time":
-                last_message_time,
+    "last_message":
+        last_message_text,
 
-            "unread_count":
-                unread_count
-        }
+    "last_message_time":
+        last_message_time,
 
+    "unread_count":
+        unread_count
+}
+        
 
         # =========================
         # Add Other User
@@ -775,7 +852,15 @@ def get_my_conversations(
                 "about":
                     other_user.about
             }
+        if conversation.conversation_type == "group":
 
+                conversation_data["group"] = {
+        "group_name":
+            conversation.group_name,
+
+        "created_by":
+            conversation.created_by
+    }
 
         result.append(
             conversation_data
@@ -882,7 +967,7 @@ def send_message(
     # Only if message is not safe
     # =========================
 
-    if analysis["risk_level"] != "safe":
+    if analysis["risk_level"] in ["suspicious", "high_risk"]:
 
         new_threat = Threat(
             message_id=new_message.id,
@@ -899,8 +984,7 @@ def send_message(
     # Only if message is not safe
     # =========================
 
-    if analysis["risk_level"] != "safe":
-
+    if analysis["risk_level"] in ["suspicious", "high_risk"]:
         participants = db.query(
             ConversationParticipant
         ).filter(
@@ -1013,16 +1097,129 @@ def get_conversation_messages(
     for message in messages:
 
         result.append({
-            "message_id": message.id,
-            "sender_id": message.sender_id,
-            "message_text": message.message_text,
-            "sent_at": message.sent_at
-        })
+    "message_id": message.id,
+    "sender_id": message.sender_id,
+    "message_text": message.message_text,
+    "sent_at": message.sent_at,
+    "attachment_url": message.attachment_url,
+    "attachment_type": message.attachment_type,
+    "attachment_name": message.attachment_name
+})
 
     return {
         "conversation_id": conversation_id,
         "messages": result
     }
+
+# -------------------------
+# Upload Chat Attachment
+# -------------------------
+
+@app.post("/conversations/{conversation_id}/attachments")
+async def upload_chat_attachment(
+    conversation_id: int,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # Check conversation
+    conversation = db.query(Conversation).filter(
+        Conversation.id == conversation_id
+    ).first()
+
+    if conversation is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Conversation not found"
+        )
+
+    # Check participant
+    participant = db.query(ConversationParticipant).filter(
+        ConversationParticipant.conversation_id == conversation_id,
+        ConversationParticipant.user_id == current_user.id
+    ).first()
+
+    if participant is None:
+        raise HTTPException(
+            status_code=403,
+            detail="You are not a participant in this conversation"
+        )
+
+    # Allow selected file types
+    allowed_types = {
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/gif",
+        "video/mp4",
+        "application/pdf",
+        "text/plain",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    }
+
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400,
+            detail="File type is not allowed"
+        )
+
+    # Limit file size to 10 MB
+    max_size = 10 * 1024 * 1024
+    content = await file.read(max_size + 1)
+
+    if len(content) > max_size:
+        raise HTTPException(
+            status_code=413,
+            detail="File size must not exceed 10 MB"
+        )
+
+    # Generate safe unique filename
+    extension = os.path.splitext(file.filename or "")[1].lower()
+    safe_filename = f"{uuid.uuid4().hex}{extension}"
+
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    file_path = os.path.join(UPLOAD_DIR, safe_filename)
+
+    with open(file_path, "wb") as output_file:
+        output_file.write(content)
+
+    # Determine attachment type
+    if file.content_type.startswith("image/"):
+        attachment_type = "image"
+    elif file.content_type.startswith("video/"):
+        attachment_type = "video"
+    else:
+        attachment_type = "document"
+
+    # Create message containing attachment
+    new_message = Message(
+        conversation_id=conversation_id,
+        sender_id=current_user.id,
+        message_text="",
+        attachment_url=f"/uploads/{safe_filename}",
+        attachment_type=attachment_type,
+        attachment_name=file.filename
+    )
+
+    db.add(new_message)
+    db.commit()
+    db.refresh(new_message)
+
+    return {
+        "message": "Attachment sent successfully",
+        "message_id": new_message.id,
+        "conversation_id": conversation_id,
+        "sender_id": current_user.id,
+        "message_text": new_message.message_text,
+        "attachment_url": new_message.attachment_url,
+        "attachment_type": new_message.attachment_type,
+        "attachment_name": new_message.attachment_name,
+        "sent_at": new_message.sent_at
+    }
+
 # -------------------------
 # Update Message Status
 # -------------------------
@@ -1098,9 +1295,6 @@ def update_message_status(
         "user_id": current_user.id,
         "status": message_status.status
     }
-# -------------------------
-# Get Message Status
-# -------------------------
 # -------------------------
 # Get Message Status
 # -------------------------
@@ -1546,6 +1740,7 @@ def end_call(
 
     # End call
     call.ended_at = datetime.now()
+    call.call_status = "ended"
 
     db.commit()
     db.refresh(call)
@@ -1600,6 +1795,46 @@ def get_my_calls(
                 "direction": direction,
                 "started_at": call.started_at,
                 "ended_at": call.ended_at
+            })
+
+    return {
+        "calls": result
+    }
+# =========================
+# INCOMING CALLS
+# =========================
+
+@app.get("/calls/incoming")
+def get_incoming_calls(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    calls = db.query(Call).filter(
+        Call.receiver_id == current_user.id,
+        Call.call_status == "outgoing",
+        Call.ended_at == None
+    ).order_by(
+        Call.started_at.desc()
+    ).all()
+
+    result = []
+
+    for call in calls:
+
+        caller = db.query(User).filter(
+            User.id == call.caller_id
+        ).first()
+
+        if caller:
+
+            result.append({
+                "call_id": call.id,
+                "caller_id": caller.id,
+                "caller_name": caller.full_name,
+                "caller_username": caller.username,
+                "call_type": call.call_type,
+                "call_status": call.call_status,
+                "started_at": call.started_at
             })
 
     return {
@@ -1927,4 +2162,628 @@ def get_my_threats(
 
     return {
         "threats": result
+    }
+@app.post("/groups")
+def create_group(
+    group_data: CreateGroupRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+
+    # Check group name
+    if not group_data.group_name.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="Group name cannot be empty"
+        )
+
+    # Check members
+    if not group_data.member_ids:
+        raise HTTPException(
+            status_code=400,
+            detail="At least one member is required"
+        )
+
+    # Remove duplicate member IDs
+    member_ids = list(set(group_data.member_ids))
+
+    # Make sure current user is included
+    if current_user.id not in member_ids:
+        member_ids.append(current_user.id)
+
+    # Check that all users exist
+    users = db.query(User).filter(
+        User.id.in_(member_ids)
+    ).all()
+
+    if len(users) != len(member_ids):
+        raise HTTPException(
+            status_code=404,
+            detail="One or more users not found"
+        )
+
+    # Create conversation
+    new_group = Conversation(
+        conversation_type="group",
+        group_name=group_data.group_name.strip(),
+        created_by=current_user.id
+    )
+
+    db.add(new_group)
+    db.commit()
+    db.refresh(new_group)
+
+    # Add participants
+    for user_id in member_ids:
+
+        participant = ConversationParticipant(
+            conversation_id=new_group.id,
+            user_id=user_id
+        )
+
+        db.add(participant)
+
+    db.commit()
+
+    return {
+        "message": "Group created successfully",
+        "conversation_id": new_group.id,
+        "group_name": new_group.group_name,
+        "created_by": new_group.created_by,
+        "member_ids": member_ids
+    }
+@app.get("/users/search-all/{search}")
+def search_users(
+    search: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+
+    users = db.query(User).filter(
+        User.id != current_user.id,
+        (
+            User.full_name.ilike(f"%{search}%")
+            | User.username.ilike(f"%{search}%")
+            | User.phone.ilike(f"%{search}%")
+        )
+    ).all()
+
+    return {
+        "users": [
+            {
+                "user_id": user.id,
+                "full_name": user.full_name,
+                "username": user.username,
+                "phone": user.phone,
+                "profile_picture": user.profile_picture,
+                "about": user.about
+            }
+            for user in users
+        ]
+    }
+# -------------------------
+# Get Group Information
+# -------------------------
+@app.get("/groups/{conversation_id}")
+def get_group_info(
+    conversation_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+
+    # Find group
+    group = db.query(Conversation).filter(
+        Conversation.id == conversation_id,
+        Conversation.conversation_type == "group"
+    ).first()
+
+    if group is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Group not found"
+        )
+
+    # Check if current user is a member
+    current_participant = db.query(
+        ConversationParticipant
+    ).filter(
+        ConversationParticipant.conversation_id == conversation_id,
+        ConversationParticipant.user_id == current_user.id
+    ).first()
+
+    if current_participant is None:
+        raise HTTPException(
+            status_code=403,
+            detail="You are not a member of this group"
+        )
+
+    # Get members
+    participants = db.query(
+        ConversationParticipant
+    ).filter(
+        ConversationParticipant.conversation_id == conversation_id
+    ).all()
+
+    members = []
+
+    for participant in participants:
+
+        user = db.query(User).filter(
+            User.id == participant.user_id
+        ).first()
+
+        if user:
+
+            members.append({
+                "user_id": user.id,
+                "full_name": user.full_name,
+                "username": user.username,
+                "profile_picture": user.profile_picture,
+                "about": user.about,
+                "is_creator":
+                    user.id == group.created_by
+            })
+
+    return {
+        "conversation_id": group.id,
+        "group_name": group.group_name,
+        "group_picture": group.group_picture,
+        "created_by": group.created_by,
+        "members": members
+    }
+@app.delete("/groups/{conversation_id}")
+def delete_group(
+    conversation_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    group = db.query(Conversation).filter(
+        Conversation.id == conversation_id,
+        Conversation.conversation_type == "group"
+    ).first()
+
+    if group is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Group not found"
+        )
+
+    if group.created_by != current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="Only the group creator can delete the group"
+        )
+
+    db.query(ConversationParticipant).filter(
+        ConversationParticipant.conversation_id == conversation_id
+    ).delete(synchronize_session=False)
+
+    db.query(Message).filter(
+        Message.conversation_id == conversation_id
+    ).delete(synchronize_session=False)
+
+    db.delete(group)
+    db.commit()
+
+    return {
+        "message": "Group deleted successfully"
+    }
+@app.post("/users/me/profile-picture")
+async def upload_profile_picture(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=400,
+            detail="Only image files are allowed"
+        )
+
+    upload_folder = "backend/uploads"
+
+    os.makedirs(upload_folder, exist_ok=True)
+
+    extension = os.path.splitext(file.filename)[1]
+
+    filename = f"{uuid.uuid4()}{extension}"
+
+    file_path = os.path.join(
+        upload_folder,
+        filename
+    )
+
+    image_data = await file.read()
+
+    with open(file_path, "wb") as image_file:
+        image_file.write(image_data)
+
+    current_user.profile_picture = f"/uploads/{filename}"
+
+    db.commit()
+    db.refresh(current_user)
+
+    return {
+        "message": "Profile picture updated successfully",
+        "profile_picture": current_user.profile_picture
+    }
+# =========================
+# Get Current User Info
+# =========================
+
+@app.get("/users/me")
+def get_my_profile(
+    current_user: User = Depends(get_current_user)
+):
+    return {
+        "user_id": current_user.id,
+        "full_name": current_user.full_name,
+        "username": current_user.username,
+        "phone": current_user.phone
+    }
+# =========================
+# WEBRTC SIGNALING
+# =========================
+
+call_signals = {}
+
+
+class WebRTCSignalRequest(BaseModel):
+    call_id: int
+    signal_type: str
+    signal_data: dict
+
+
+@app.post("/calls/signal")
+def send_call_signal(
+    signal_data: WebRTCSignalRequest,
+    current_user: User = Depends(get_current_user)
+):
+    if signal_data.signal_type not in [
+        "offer",
+        "answer",
+        "ice-candidate"
+    ]:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid signal type"
+        )
+
+    if signal_data.call_id not in call_signals:
+        call_signals[signal_data.call_id] = []
+
+    call_signals[signal_data.call_id].append({
+        "user_id": current_user.id,
+        "signal_type": signal_data.signal_type,
+        "signal_data": signal_data.signal_data
+    })
+
+    return {
+        "message": "Signal sent successfully"
+    }
+
+
+@app.get("/calls/{call_id}/signals")
+def get_call_signals(
+    call_id: int,
+    current_user: User = Depends(get_current_user)
+):
+    signals = call_signals.get(call_id, [])
+
+    return {
+        "signals": [
+            signal
+            for signal in signals
+            if signal["user_id"] != current_user.id
+        ]
+    }
+# =========================
+# CALL STATUS
+# =========================
+
+@app.get("/calls/{call_id}/status")
+def get_call_status(
+    call_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    call = db.query(Call).filter(
+        Call.id == call_id
+    ).first()
+
+    if call is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Call not found"
+        )
+
+    if (
+        call.caller_id != current_user.id
+        and call.receiver_id != current_user.id
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="You are not part of this call"
+        )
+
+    return {
+        "call_id": call.id,
+        "call_status": call.call_status,
+        "started_at": call.started_at,
+        "ended_at": call.ended_at
+    }
+    # =========================
+# ANSWER CALL
+# =========================
+
+@app.put("/calls/{call_id}/answer")
+def answer_call(
+    call_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    call = db.query(Call).filter(
+        Call.id == call_id
+    ).first()
+
+    if call is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Call not found"
+        )
+
+    if call.receiver_id != current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="Only the receiver can answer this call"
+        )
+
+    if call.call_status != "outgoing":
+        raise HTTPException(
+            status_code=400,
+            detail="Call cannot be answered"
+        )
+
+    call.call_status = "answered"
+
+    db.commit()
+    db.refresh(call)
+
+    return {
+        "message": "Call answered successfully",
+        "call_id": call.id,
+        "call_status": call.call_status
+    }
+
+
+# =========================
+# Report a Problem
+# =========================
+
+@app.post("/report-problem")
+def report_problem(
+    report: ProblemReport,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+
+    new_report = Report(
+        user_id=current_user.id,
+        issue_type=report.issue_type,
+        description=report.description,
+        status="open"
+    )
+
+    db.add(new_report)
+    db.commit()
+    db.refresh(new_report)
+
+    return {
+        "message": "Report submitted successfully",
+        "report_id": new_report.id,
+        "user_id": new_report.user_id,
+        "issue_type": new_report.issue_type,
+        "description": new_report.description,
+        "status": new_report.status,
+        "created_at": new_report.created_at
+    }
+
+# =========================
+# Get My Reports
+# =========================
+
+@app.get("/my-reports")
+def get_my_reports(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+
+    reports = db.query(Report).filter(
+        Report.user_id == current_user.id
+    ).order_by(
+        Report.created_at.desc()
+    ).all()
+
+    result = []
+
+    for report in reports:
+        result.append({
+            "report_id": report.id,
+            "issue_type": report.issue_type,
+            "description": report.description,
+            "status": report.status,
+            "created_at": report.created_at
+        })
+
+    return {
+        "message": "Reports retrieved successfully",
+        "reports": result
+    }
+
+# =========================
+# Send Phone Verification Code
+# =========================
+
+@app.post("/phone/send-code")
+def send_phone_code(
+    new_phone: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+
+    new_phone = new_phone.strip()
+
+    # Validate phone number
+    if not new_phone.isdigit() or len(new_phone) < 8:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid phone number."
+        )
+
+    # Check if phone is already used
+    existing_user = db.query(User).filter(
+        User.phone == new_phone
+    ).first()
+
+    if existing_user:
+        raise HTTPException(
+            status_code=400,
+            detail="This phone number is already registered."
+        )
+
+    # Generate OTP
+    otp_code = str(secrets.randbelow(900000) + 100000)
+
+    # Save OTP temporarily
+    phone_otp_storage[current_user.id] = {
+        "phone": new_phone,
+        "code": otp_code,
+        "expires_at": time.time() + 300
+    }
+
+    # Display OTP in terminal (testing only)
+    print("NEXA PHONE OTP:", otp_code)
+
+    return {
+        "message": "Verification code generated successfully."
+    }
+
+# =========================
+# Verify Phone OTP
+# =========================
+
+@app.post("/phone/verify-code")
+def verify_phone_code(
+    otp_code: str,
+    current_user: User = Depends(get_current_user)
+):
+
+    # Get stored OTP
+    otp_data = phone_otp_storage.get(current_user.id)
+
+    if not otp_data:
+        raise HTTPException(
+            status_code=400,
+            detail="No verification code found. Please request a new code."
+        )
+
+    # Check expiration
+    if time.time() > otp_data["expires_at"]:
+        phone_otp_storage.pop(current_user.id, None)
+
+        raise HTTPException(
+            status_code=400,
+            detail="Verification code expired. Please request a new code."
+        )
+
+    # Check OTP
+    if otp_code != otp_data["code"]:
+        raise HTTPException(
+            status_code=400,
+            detail="Incorrect verification code."
+        )
+
+    # Mark OTP as verified
+    otp_data["verified"] = True
+
+    return {
+        "message": "Phone number verified successfully.",
+        "verified": True
+    }
+
+# =========================
+# Change Phone Number
+# =========================
+
+@app.put("/phone/change")
+def change_phone_number(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+
+    # Get OTP data
+    otp_data = phone_otp_storage.get(current_user.id)
+
+    if not otp_data:
+        raise HTTPException(
+            status_code=400,
+            detail="Please verify your new phone number first."
+        )
+
+    # Check verification
+    if not otp_data.get("verified"):
+        raise HTTPException(
+            status_code=400,
+            detail="Phone number is not verified."
+        )
+
+    # Check expiration again
+    if time.time() > otp_data["expires_at"]:
+        phone_otp_storage.pop(current_user.id, None)
+
+        raise HTTPException(
+            status_code=400,
+            detail="Verification expired. Please request a new code."
+        )
+
+    new_phone = otp_data["phone"]
+
+    # Check phone availability again
+    existing_user = db.query(User).filter(
+        User.phone == new_phone,
+        User.id != current_user.id
+    ).first()
+
+    if existing_user:
+        raise HTTPException(
+            status_code=400,
+            detail="This phone number is already registered."
+        )
+
+    # Update phone number
+    current_user.phone = new_phone
+
+    db.commit()
+    db.refresh(current_user)
+
+    # Remove used OTP
+    phone_otp_storage.pop(current_user.id, None)
+
+    return {
+        "message": "Phone number changed successfully.",
+        "new_phone": current_user.phone
+    }
+# =========================
+# Get Current User
+# =========================
+
+@app.get("/me")
+def get_current_user_info(
+    current_user: User = Depends(get_current_user)
+):
+    return {
+        "user_id": current_user.id,
+        "full_name": current_user.full_name,
+        "username": current_user.username,
+        "phone": current_user.phone
     }

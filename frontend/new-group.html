@@ -17,12 +17,21 @@
         <!-- Header -->
         <header class="group-header">
 
-            <button class="group-back"
-                    onclick="window.location.href='new-chat.html'">
+            <button
+                class="group-back"
+                onclick="window.location.href='new-chat.html'">
                 ←
             </button>
 
             <h1>Add group members</h1>
+
+            <button
+                class="group-next"
+                id="nextButton"
+                onclick="goToGroupInfo()"
+                disabled>
+                Next
+            </button>
 
         </header>
 
@@ -34,18 +43,676 @@
 
             <input
                 type="text"
-                placeholder="Search name, number or @username"
+                id="groupSearchInput"
+                placeholder="Search contacts..."
             >
 
         </div>
 
 
-        <!-- Members will appear here later -->
-        <main class="group-members">
+        <!-- Selected Members -->
+        <div
+            class="selected-group-members"
+            id="selectedMembers">
+        </div>
+
+
+        <!-- Contacts -->
+        <main
+            class="group-members"
+            id="groupMembers">
+
+            <p class="group-message">
+                Loading contacts...
+            </p>
 
         </main>
 
     </div>
+
+
+    <script>
+
+        const token =
+            localStorage.getItem("access_token");
+
+
+        if (!token) {
+
+            window.location.href =
+                "index.html";
+
+        }
+
+
+        let contacts = [];
+
+        let selectedUsers = [];
+
+
+        const groupMembers =
+            document.getElementById(
+                "groupMembers"
+            );
+
+
+        const selectedMembers =
+            document.getElementById(
+                "selectedMembers"
+            );
+
+
+        const searchInput =
+            document.getElementById(
+                "groupSearchInput"
+            );
+
+
+        const nextButton =
+            document.getElementById(
+                "nextButton"
+            );
+
+
+        /*
+        =========================
+        Load Contacts
+        =========================
+        */
+
+        async function loadContacts() {
+
+            try {
+
+                const response =
+                    await fetch(
+                        "http://127.0.0.1:8000/contacts",
+                        {
+                            method: "GET",
+                            headers: {
+                                "Authorization":
+                                    "Bearer " + token
+                            }
+                        }
+                    );
+
+
+                const data =
+                    await response.json();
+
+
+                if (!response.ok) {
+
+                    groupMembers.innerHTML = `
+                        <p class="group-message">
+                            ${
+                                data.detail ||
+                                "Could not load contacts."
+                            }
+                        </p>
+                    `;
+
+                    return;
+
+                }
+
+
+                contacts =
+                    data.contacts || [];
+
+
+                if (contacts.length === 0) {
+
+                    groupMembers.innerHTML = `
+                        <p class="group-message">
+                            You don't have any contacts yet.
+                        </p>
+                    `;
+
+                    return;
+
+                }
+
+
+                displayContacts(contacts);
+
+
+            } catch (error) {
+
+                console.error(
+                    "Load contacts error:",
+                    error
+                );
+
+
+                groupMembers.innerHTML = `
+                    <p class="group-message">
+                        Cannot connect to Nexa server.
+                    </p>
+                `;
+
+            }
+
+        }
+
+
+        /*
+        =========================
+        Display Contacts
+        =========================
+        */
+
+        function displayContacts(
+            contactsToDisplay
+        ) {
+
+            groupMembers.innerHTML = "";
+
+
+            if (
+                contactsToDisplay.length === 0
+            ) {
+
+                groupMembers.innerHTML = `
+                    <p class="group-message">
+                        No contacts found.
+                    </p>
+                `;
+
+                return;
+
+            }
+
+
+            contactsToDisplay.forEach(
+                function(contact) {
+
+                    const user =
+                        contact.contact_user ||
+                        contact;
+
+
+                    const userId =
+                        user.user_id ||
+                        user.id;
+
+
+                    const fullName =
+                        user.full_name ||
+                        "User";
+
+
+                    const username =
+                        user.username ||
+                        "";
+
+
+                    const profilePicture =
+                        user.profile_picture ||
+                        null;
+
+
+                    const isSelected =
+                        selectedUsers.some(
+                            function(selectedUser) {
+
+                                return (
+                                    selectedUser.user_id
+                                    === userId
+                                );
+
+                            }
+                        );
+
+
+                    const member =
+                        document.createElement(
+                            "div"
+                        );
+
+
+                    member.className =
+                        "group-member-item";
+
+
+                    member.innerHTML = `
+
+                        <div class="group-member-avatar">
+
+                            ${
+                                profilePicture
+                                ? `
+                                    <img
+                                        src="${profilePicture}"
+                                        alt="${fullName}">
+                                  `
+                                : "👤"
+                            }
+
+                        </div>
+
+
+                        <div class="group-member-info">
+
+                            <h3>
+                                ${fullName}
+                            </h3>
+
+                            <p>
+                                ${
+                                    username
+                                    ? "@" + username
+                                    : ""
+                                }
+                            </p>
+
+                        </div>
+
+
+                        <div
+                            class="group-member-check
+                            ${
+                                isSelected
+                                ? "selected"
+                                : ""
+                            }">
+
+                            ${
+                                isSelected
+                                ? "✓"
+                                : ""
+                            }
+
+                        </div>
+
+                    `;
+
+
+                    member.addEventListener(
+                        "click",
+                        function() {
+
+                            toggleUser({
+                                user_id: userId,
+                                full_name: fullName,
+                                username: username,
+                                profile_picture:
+                                    profilePicture
+                            });
+
+                        }
+                    );
+
+
+                    groupMembers.appendChild(
+                        member
+                    );
+
+                }
+            );
+
+        }
+
+
+        /*
+        =========================
+        Select / Remove User
+        =========================
+        */
+
+        function toggleUser(user) {
+
+            const alreadySelected =
+                selectedUsers.some(
+                    function(selectedUser) {
+
+                        return (
+                            selectedUser.user_id
+                            === user.user_id
+                        );
+
+                    }
+                );
+
+
+            if (alreadySelected) {
+
+                selectedUsers =
+                    selectedUsers.filter(
+                        function(selectedUser) {
+
+                            return (
+                                selectedUser.user_id
+                                !== user.user_id
+                            );
+
+                        }
+                    );
+
+            } else {
+
+                selectedUsers.push(user);
+
+            }
+
+
+            updateSelectedMembers();
+
+
+            /*
+            Refresh contact list
+            so the checkmark changes.
+            */
+
+            const searchText =
+                searchInput.value
+                    .trim()
+                    .toLowerCase();
+
+
+            if (searchText === "") {
+
+                displayContacts(contacts);
+
+            } else {
+
+                const filtered =
+                    contacts.filter(
+                        function(contact) {
+
+                            const user =
+                                contact.contact_user ||
+                                contact;
+
+
+                            const name =
+                                (
+                                    user.full_name ||
+                                    ""
+                                ).toLowerCase();
+
+
+                            const username =
+                                (
+                                    user.username ||
+                                    ""
+                                ).toLowerCase();
+
+
+                            const phone =
+                                (
+                                    user.phone ||
+                                    ""
+                                ).toLowerCase();
+
+
+                            return (
+                                name.includes(searchText) ||
+                                username.includes(searchText) ||
+                                phone.includes(searchText)
+                            );
+
+                        }
+                    );
+
+
+                displayContacts(filtered);
+
+            }
+
+        }
+
+
+        /*
+        =========================
+        Selected Members
+        =========================
+        */
+
+        function updateSelectedMembers() {
+
+            selectedMembers.innerHTML = "";
+
+
+            selectedUsers.forEach(
+                function(user) {
+
+                    const member =
+                        document.createElement(
+                            "div"
+                        );
+
+
+                    member.className =
+                        "selected-group-member";
+
+
+                    member.innerHTML = `
+
+                        <span>
+                            ${user.full_name}
+                        </span>
+
+                        <button
+                            onclick="removeSelectedUser(${user.user_id})">
+                            ×
+                        </button>
+
+                    `;
+
+
+                    selectedMembers.appendChild(
+                        member
+                    );
+
+                }
+            );
+
+
+            nextButton.disabled =
+                selectedUsers.length === 0;
+
+        }
+
+
+        /*
+        =========================
+        Remove Selected User
+        =========================
+        */
+
+        function removeSelectedUser(
+            userId
+        ) {
+
+            selectedUsers =
+                selectedUsers.filter(
+                    function(user) {
+
+                        return (
+                            user.user_id !== userId
+                        );
+
+                    }
+                );
+
+
+            updateSelectedMembers();
+
+
+            displayContacts(
+                contacts.filter(
+                    function(contact) {
+
+                        const user =
+                            contact.contact_user ||
+                            contact;
+
+                        const searchText =
+                            searchInput.value
+                                .trim()
+                                .toLowerCase();
+
+
+                        if (searchText === "") {
+                            return true;
+                        }
+
+
+                        const name =
+                            (
+                                user.full_name ||
+                                ""
+                            ).toLowerCase();
+
+
+                        const username =
+                            (
+                                user.username ||
+                                ""
+                            ).toLowerCase();
+
+
+                        const phone =
+                            (
+                                user.phone ||
+                                ""
+                            ).toLowerCase();
+
+
+                        return (
+                            name.includes(searchText) ||
+                            username.includes(searchText) ||
+                            phone.includes(searchText)
+                        );
+
+                    }
+                )
+            );
+
+        }
+
+
+        /*
+        =========================
+        Search Contacts
+        =========================
+        */
+
+        searchInput.addEventListener(
+            "input",
+            function() {
+
+                const searchText =
+                    searchInput.value
+                        .trim()
+                        .toLowerCase();
+
+
+                if (searchText === "") {
+
+                    displayContacts(
+                        contacts
+                    );
+
+                    return;
+
+                }
+
+
+                const filteredContacts =
+                    contacts.filter(
+                        function(contact) {
+
+                            const user =
+                                contact.contact_user ||
+                                contact;
+
+
+                            const name =
+                                (
+                                    user.full_name ||
+                                    ""
+                                ).toLowerCase();
+
+
+                            const username =
+                                (
+                                    user.username ||
+                                    ""
+                                ).toLowerCase();
+
+
+                            const phone =
+                                (
+                                    user.phone ||
+                                    ""
+                                ).toLowerCase();
+
+
+                            return (
+                                name.includes(searchText) ||
+                                username.includes(searchText) ||
+                                phone.includes(searchText)
+                            );
+
+                        }
+                    );
+
+
+                displayContacts(
+                    filteredContacts
+                );
+
+            }
+        );
+
+
+        /*
+        =========================
+        Next
+        =========================
+        */
+
+        function goToGroupInfo() {
+
+            if (
+                selectedUsers.length === 0
+            ) {
+                return;
+            }
+
+
+            localStorage.setItem(
+                "groupMembers",
+                JSON.stringify(
+                    selectedUsers
+                )
+            );
+
+
+            window.location.href =
+                "group-info.html";
+
+        }
+
+
+        /*
+        =========================
+        Start
+        =========================
+        */
+
+        document.addEventListener(
+            "DOMContentLoaded",
+            function() {
+
+                loadContacts();
+
+            }
+        );
+
+    </script>
 
 </body>
 

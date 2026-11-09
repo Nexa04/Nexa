@@ -108,6 +108,29 @@
 
 </div>
 
+<!-- My Support Requests -->
+
+<div class="my-support-section">
+
+    <h3>My Support Requests</h3>
+
+    <button
+        class="support-option"
+        onclick="loadMySupportRequests()">
+
+        <div class="support-option-text">
+            <strong>View My Requests</strong>
+            <small>Check your previous support requests</small>
+        </div>
+
+        <span>›</span>
+
+    </button>
+
+    <div id="mySupportRequests"></div>
+
+</div>
+
 
             <!-- Bottom Message -->
 
@@ -130,6 +153,13 @@
     </div>
     <script>
 
+
+// =========================
+// Support Type
+// =========================
+
+let selectedSupportType = null;
+
 function openSupportBox(type) {
 
     const box = document.getElementById("supportMessageBox");
@@ -138,31 +168,201 @@ function openSupportBox(type) {
 
     title.textContent = type;
 
+    selectedSupportType = type;
+
     box.style.display = "block";
 
     box.scrollIntoView({
         behavior: "smooth",
         block: "center"
     });
-
 }
 
 
-function sendSupportMessage() {
+// =========================
+// Send Support Message
+// =========================
 
-    const message = document.getElementById("supportMessage").value.trim();
+async function sendSupportMessage() {
 
-    if (message === "") {
+    const message =
+        document.getElementById("supportMessage").value.trim();
 
-        alert("Please describe your problem.");
-
+    if (!selectedSupportType) {
+        alert("Please select a support category.");
         return;
     }
 
-    alert("Your message has been sent to Nexa Support.");
+    if (message === "") {
+        alert("Please describe your problem.");
+        return;
+    }
 
-    document.getElementById("supportMessage").value = "";
+    const token = localStorage.getItem("access_token");
 
+    if (!token) {
+        alert("Please login first.");
+        window.location.href = "login.html";
+        return;
+    }
+
+    // Convert support type
+    const typeMapping = {
+        "Chat with Support": "general_support",
+        "Safety Assistance": "safety_assistance",
+        "Technical Help": "technical_help",
+        "Account Help": "account_help"
+    };
+
+    const requestType = typeMapping[selectedSupportType];
+
+    const sendButton =
+        document.querySelector(".send-support");
+
+    sendButton.disabled = true;
+    sendButton.textContent = "Sending...";
+
+    try {
+
+        const response = await fetch(
+            "http://127.0.0.1:8000/support",
+            {
+                method: "POST",
+
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer " + token
+                },
+
+                body: JSON.stringify({
+                    request_type: requestType,
+                    subject: selectedSupportType,
+                    message: message
+                })
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            alert(data.detail || "Failed to send support request.");
+            return;
+        }
+
+        alert("Your support request has been sent successfully!");
+
+        document.getElementById("supportMessage").value = "";
+
+        selectedSupportType = null;
+
+        document.getElementById("supportMessageBox").style.display = "none";
+
+    }
+
+    catch (error) {
+
+        console.error("Support Error:", error);
+
+        alert("Cannot connect to Nexa server.");
+
+    }
+
+    finally {
+
+        sendButton.disabled = false;
+        sendButton.textContent = "Send";
+
+    }
+}
+
+
+// =========================
+// Get My Support Requests
+// =========================
+
+async function loadMySupportRequests() {
+
+    const token = localStorage.getItem("access_token");
+
+    if (!token) {
+        alert("Please login first.");
+        window.location.href = "login.html";
+        return;
+    }
+
+    const container =
+        document.getElementById("mySupportRequests");
+
+    container.textContent = "Loading requests...";
+
+    try {
+
+        const response = await fetch(
+            "http://127.0.0.1:8000/support",
+            {
+                method: "GET",
+                headers: {
+                    "Authorization": "Bearer " + token
+                }
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            container.textContent =
+                data.detail || "Failed to load requests.";
+            return;
+        }
+
+        container.replaceChildren();
+
+        if (data.support_requests.length === 0) {
+            container.textContent = "You have no support requests yet.";
+            return;
+        }
+
+        data.support_requests.forEach(request => {
+
+            const card = document.createElement("div");
+            card.className = "support-option";
+
+            const details = document.createElement("div");
+            details.className = "support-option-text";
+
+            const title = document.createElement("strong");
+            title.textContent = request.subject;
+
+            const type = document.createElement("small");
+            type.textContent = "Type: " + request.request_type;
+
+            const message = document.createElement("p");
+            message.textContent = request.message;
+
+            const status = document.createElement("small");
+            status.textContent = "Status: " + request.status;
+
+            const date = document.createElement("small");
+            date.textContent = request.created_at
+                ? "Date: " + new Date(request.created_at).toLocaleString()
+                : "";
+
+            details.append(title, type, message, status, date);
+            card.appendChild(details);
+
+            container.appendChild(card);
+
+        });
+
+    }
+
+    catch (error) {
+
+        console.error("Load Support Requests Error:", error);
+
+        container.textContent = "Cannot connect to Nexa server.";
+
+    }
 }
 
 </script>

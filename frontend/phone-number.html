@@ -50,9 +50,7 @@
                     Current phone number
                 </span>
 
-                <span class="phone-value">
-                    +962 7 9123 4567
-                </span>
+               <span class="phone-value" id="currentPhone"></span>
 
             </div>
 
@@ -106,6 +104,43 @@
 
 
     <script src="script.js"></script>
+    
+<script>
+document.addEventListener("DOMContentLoaded", async function () {
+
+    const phoneElement = document.getElementById("currentPhone");
+    const token = localStorage.getItem("access_token");
+
+    if (!token) return;
+
+    try {
+
+        const response = await fetch(
+            "http://127.0.0.1:8000/users/me",
+            {
+                method: "GET",
+                headers: {
+                    "Authorization": "Bearer " + token
+                }
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            console.error(data);
+            return;
+        }
+
+        phoneElement.textContent = data.phone;
+
+    } catch (error) {
+        console.error("Phone loading error:", error);
+    }
+
+});
+</script>
+
 
 </body>
 

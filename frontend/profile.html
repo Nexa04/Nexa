@@ -41,14 +41,28 @@
 
             <div class="profile-photo">
 
-            <span>📷</span>
+    <img
+        id="profileImage"
+        src=""
+        alt="Profile Picture"
+        style="display: none;">
 
-            <button class="photo-add">+</button>
+    <span id="profileCamera">📷</span>
 
-        </div>
+    <button
+        class="photo-add"
+        onclick="document.getElementById('profileImageInput').click()">
+        +
+    </button>
 
-        
+    <input
+        type="file"
+        id="profileImageInput"
+        accept="image/*"
+        style="display: none;"
+        onchange="previewProfileImage(event)">
 
+</div>
 
 
             <!-- =========================
@@ -216,7 +230,257 @@
 
 
     <script src="script.js"></script>
+  <script>
+    async function loadProfile() {
 
+        const token = localStorage.getItem("access_token");
+
+        if (!token) {
+            window.location.href = "index.html";
+            return;
+        }
+
+        try {
+
+            const response = await fetch(
+                "http://127.0.0.1:8000/me",
+                {
+                    method: "GET",
+                    headers: {
+                        "Authorization": "Bearer " + token
+                    }
+                }
+            );
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                alert(
+                    data.detail ||
+                    "Could not load profile."
+                );
+                return;
+            }
+
+
+            // =========================
+            // PROFILE INFORMATION
+            // =========================
+
+            document.getElementById("nameInput").value =
+                data.full_name || "";
+
+            document.getElementById("usernameInput").value =
+                data.username || "";
+
+            document.getElementById("phoneInput").value =
+                data.phone || "";
+
+            document.getElementById("emailInput").value =
+                data.email || "";
+
+            document.getElementById("aboutInput").value =
+                data.about || "";
+
+
+            // =========================
+            // PROFILE PICTURE
+            // =========================
+
+            const image =
+                document.getElementById("profileImage");
+
+            const camera =
+                document.getElementById("profileCamera");
+
+
+            if (data.profile_picture) {
+
+                let imageUrl =
+                    data.profile_picture;
+
+                if (imageUrl.startsWith("/")) {
+
+                    imageUrl =
+                        "http://127.0.0.1:8000" +
+                        imageUrl;
+                }
+
+                image.src = imageUrl;
+
+                image.onload = function () {
+
+                    image.style.display = "block";
+
+                    camera.style.display = "none";
+                };
+
+
+                image.onerror = function () {
+
+                    console.error(
+                        "Could not load profile image:",
+                        imageUrl
+                    );
+
+                    image.style.display = "none";
+
+                    camera.style.display = "block";
+                };
+
+            } else {
+
+                image.style.display = "none";
+
+                camera.style.display = "block";
+            }
+
+        } catch (error) {
+
+            console.error(
+                "Profile error:",
+                error
+            );
+        }
+    }
+
+
+    // Load profile when page opens
+    loadProfile();
+
+
+
+    // =========================
+    // PROFILE PICTURE UPLOAD
+    // =========================
+
+    async function previewProfileImage(event) {
+
+        const file =
+            event.target.files[0];
+
+        if (!file) {
+            return;
+        }
+
+
+        const token =
+            localStorage.getItem("access_token");
+
+        if (!token) {
+
+            window.location.href =
+                "index.html";
+
+            return;
+        }
+
+
+        // =========================
+        // SHOW IMAGE IMMEDIATELY
+        // =========================
+
+        const image =
+            document.getElementById("profileImage");
+
+        const camera =
+            document.getElementById("profileCamera");
+
+
+        image.src =
+            URL.createObjectURL(file);
+
+        image.style.display = "block";
+
+        camera.style.display = "none";
+
+
+        // =========================
+        // UPLOAD IMAGE
+        // =========================
+
+        const formData =
+            new FormData();
+
+        formData.append(
+            "file",
+            file
+        );
+
+
+        try {
+
+            const response =
+                await fetch(
+                    "http://127.0.0.1:8000/users/me/profile-picture",
+                    {
+                        method: "POST",
+
+                        headers: {
+                            "Authorization":
+                                "Bearer " + token
+                        },
+
+                        body: formData
+                    }
+                );
+
+
+            const data =
+                await response.json();
+
+
+            if (!response.ok) {
+
+                alert(
+                    data.detail ||
+                    "Could not upload profile picture."
+                );
+
+                return;
+            }
+
+
+            // Use the URL returned by backend
+            if (data.profile_picture) {
+
+                let imageUrl =
+                    data.profile_picture;
+
+                if (imageUrl.startsWith("/")) {
+
+                    imageUrl =
+                        "http://127.0.0.1:8000" +
+                        imageUrl;
+                }
+
+                image.src =
+                    imageUrl;
+            }
+
+
+            image.style.display = "block";
+
+            camera.style.display = "none";
+
+
+            alert(
+                "Profile picture updated successfully."
+            );
+
+        } catch (error) {
+
+            console.error(
+                "Profile picture error:",
+                error
+            );
+
+            alert(
+                "Could not connect to the server."
+            );
+        }
+    }
+</script>
 </body>
 
 </html>

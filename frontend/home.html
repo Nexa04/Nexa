@@ -201,20 +201,56 @@
 
     <script src="script.js"></script>
     <script>
-
 function showFilter(type, button) {
 
-    // إزالة التحديد عن كل الأزرار
-    document.querySelectorAll('.filter').forEach(function(filter) {
-        filter.classList.remove('active');
-    });
+    document.querySelectorAll(".filter").forEach(
+        function(filter) {
+            filter.classList.remove("active");
+        }
+    );
 
-    // تحديد الزر الذي تم الضغط عليه
-    button.classList.add('active');
+    button.classList.add("active");
 
+    const chatItems =
+        document.querySelectorAll(".home-chat-item");
+
+    chatItems.forEach(
+        function(chatItem) {
+
+            const conversationType =
+                chatItem.dataset.conversationType;
+
+            const unreadCount =
+                Number(
+                    chatItem.dataset.unreadCount || 0
+                );
+
+            if (type === "all") {
+
+                chatItem.style.display = "flex";
+
+            } else if (type === "unread") {
+
+                if (unreadCount > 0) {
+                    chatItem.style.display = "flex";
+                } else {
+                    chatItem.style.display = "none";
+                }
+
+            } else if (type === "groups") {
+
+                if (conversationType === "group") {
+                    chatItem.style.display = "flex";
+                } else {
+                    chatItem.style.display = "none";
+                }
+
+            }
+
+        }
+    );
 }
-
-</script>
+    </script>
 <script>
 
 async function loadHomeChats() {
@@ -281,28 +317,115 @@ async function loadHomeChats() {
 
         conversations.forEach(function(conversation) {
 
-            if (!conversation.other_user) {
-                return;
-            }
+            if (
+    conversation.conversation_type === "group"
+) {
 
-            const user =
-                conversation.other_user;
+    const chatItem =
+        document.createElement("div");
+
+    chatItem.className =
+        "home-chat-item";
+
+    chatItem.dataset.conversationType =
+        "group";
+
+    chatItem.dataset.unreadCount =
+        conversation.unread_count || 0;
+
+
+    chatItem.innerHTML = `
+
+        <div class="home-chat-avatar">
+            👥
+        </div>
+
+        <div class="home-chat-info">
+
+            <h3>
+                ${
+                    conversation.group_name ||
+                    "Group"
+                }
+            </h3>
+
+            <p>
+                Group
+            </p>
+
+        </div>
+
+    `;
+
+
+    chatItem.addEventListener(
+        "click",
+        function() {
+
+            localStorage.setItem(
+                "conversationId",
+                conversation.conversation_id
+            );
+
+            localStorage.setItem(
+                "chatUser",
+                conversation.group_name ||
+                "Group"
+            );
+
+            localStorage.setItem(
+                "chatType",
+                "group"
+            );
+
+
+            window.location.href =
+                "chat.html";
+
+        }
+    );
+
+
+    homeChats.appendChild(
+        chatItem
+    );
+
+    return;
+}
+
+
+if (!conversation.other_user) {
+    return;
+}
+
+const user =
+    conversation.other_user;
 
             const chatItem =
                 document.createElement("div");
 
             chatItem.className =
                 "home-chat-item";
+            chatItem.dataset.conversationType =
+                conversation.conversation_type || "private";
 
-            chatItem.innerHTML = `
-
-                <div class="home-chat-avatar">
-                    ${
-                        user.profile_picture
-                        ? `<img src="${user.profile_picture}">`
-                        : "👤"
-                    }
-                </div>
+            chatItem.dataset.unreadCount =
+                conversation.unread_count || 0;
+            chatItem.dataset.groupName =
+                conversation.group_name || "Group";         
+            chatItem.innerHTML = 
+        `
+ <div class="home-chat-avatar">
+    ${
+        user.profile_picture
+        ? `<img src="${
+            user.profile_picture.startsWith("http")
+            ? user.profile_picture
+            : "http://127.0.0.1:8000" + user.profile_picture
+        }" alt="Profile">`
+        : "👤"
+    }
+</div>
 
                 <div class="home-chat-info">
 
@@ -368,6 +491,10 @@ async function loadHomeChats() {
                         localStorage.setItem(
                             "conversationId",
                             data.conversation_id
+                        );
+                        localStorage.setItem(
+                            "chatType",
+                            "private"
                         );
 
                         window.location.href =
@@ -486,7 +613,164 @@ document.addEventListener(
 
     }
 );
+// =========================
+// INCOMING CALL CHECK
+// =========================
 
+let incomingCallShown = false;
+
+async function checkIncomingCall() {
+
+    const token = localStorage.getItem("access_token");
+
+    if (!token || incomingCallShown) {
+        return;
+    }
+
+    try {
+
+        const response = await fetch(
+            "http://127.0.0.1:8000/calls/incoming",
+            {
+                headers: {
+                    "Authorization": "Bearer " + token
+                }
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            return;
+        }
+
+        if (data.calls && data.calls.length > 0) {
+
+            const call = data.calls[0];
+
+            incomingCallShown = true;
+
+            localStorage.setItem(
+                "incomingCallId",
+                call.call_id
+            );
+
+            localStorage.setItem(
+                "incomingCallerId",
+                call.caller_id
+            );
+
+            localStorage.setItem(
+                "incomingCallerName",
+                call.caller_name
+            );
+
+            showIncomingCallPopup(call);
+        }
+
+    } catch (error) {
+
+        console.error(
+            "Incoming call check error:",
+            error
+        );
+    }
+}
+function showIncomingCallPopup(call) {
+
+    const popup = document.createElement("div");
+
+    popup.id = "incomingCallPopup";
+
+    popup.innerHTML = `
+        <div class="incoming-popup-content">
+
+            <div class="incoming-call-icon">
+                📞
+            </div>
+
+            <h2>Incoming Audio Call</h2>
+
+            <p>${call.caller_name || "User"}</p>
+
+            <div class="incoming-popup-buttons">
+
+                <button onclick="declineIncomingCall()">
+                    Decline
+                </button>
+
+                <button onclick="acceptIncomingCall()">
+                    Accept
+                </button>
+
+            </div>
+
+        </div>
+    `;
+
+    document.body.appendChild(popup);
+}
+async function acceptIncomingCall() {
+
+    const callId =
+        localStorage.getItem("incomingCallId");
+
+    if (!callId) {
+        return;
+    }
+
+    window.location.href =
+        "audio-call.html";
+}
+async function declineIncomingCall() {
+
+    const callId =
+        localStorage.getItem("incomingCallId");
+
+    if (!callId) {
+        return;
+    }
+
+    try {
+
+        await fetch(
+            "http://127.0.0.1:8000/calls/" +
+            callId +
+            "/end",
+            {
+                method: "PUT",
+                headers: {
+                    "Authorization":
+                        "Bearer " +
+                        localStorage.getItem("access_token")
+                }
+            }
+        );
+
+    } catch (error) {
+
+        console.error(error);
+    }
+
+    const popup =
+        document.getElementById(
+            "incomingCallPopup"
+        );
+
+    if (popup) {
+        popup.remove();
+    }
+
+    incomingCallShown = false;
+
+    localStorage.removeItem("incomingCallId");
+}
+setInterval(
+    checkIncomingCall,
+    1000
+);
+
+checkIncomingCall();
 </script>
 </body>
 

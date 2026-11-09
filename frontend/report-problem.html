@@ -14,7 +14,6 @@
 
     <div class="report-container">
 
-        <!-- Header -->
         <header class="report-header">
 
             <button
@@ -27,66 +26,45 @@
 
         </header>
 
-
-        <!-- Introduction -->
         <div class="report-intro">
-
             <p>Tell us what went wrong.</p>
-
         </div>
 
-
-        <!-- Report Form -->
         <main class="report-form">
 
-            <!-- Issue Type -->
-            <label class="report-label">
+            <label class="report-label" for="issueType">
                 Issue type
             </label>
 
-            <select class="report-select">
+            <select class="report-select" id="issueType" required>
 
                 <option value="" selected disabled>
                     Select an issue
                 </option>
 
-                <option>
-                    App is not working
-                </option>
-
-                <option>
-                    Chat problem
-                </option>
-
-                <option>
-                    Call problem
-                </option>
-
-                <option>
-                    Account problem
-                </option>
-
-                <option>
-                    Other
-                </option>
+                <option value="App is not working">App is not working</option>
+                <option value="Chat problem">Chat problem</option>
+                <option value="Call problem">Call problem</option>
+                <option value="Account problem">Account problem</option>
+                <option value="Other">Other</option>
 
             </select>
 
-
-            <!-- Description -->
-            <label class="report-label">
+            <label class="report-label" for="reportDescription">
                 Description
             </label>
 
             <textarea
                 class="report-description"
-                placeholder="Describe the problem..."></textarea>
+                id="reportDescription"
+                placeholder="Describe the problem..."
+                required></textarea>
 
-
-            <!-- Submit -->
             <button
                 class="report-submit"
-                type="button">
+                id="submitReport"
+                type="button"
+                onclick="submitReport()">
 
                 Submit
 
@@ -95,6 +73,75 @@
         </main>
 
     </div>
+
+    <script>
+
+        async function submitReport() {
+
+            const issueType =
+                document.getElementById("issueType").value;
+
+            const description =
+                document.getElementById("reportDescription").value.trim();
+
+            if (!issueType || !description) {
+                alert("Please select an issue type and describe the problem.");
+                return;
+            }
+
+            const submitButton =
+                document.getElementById("submitReport");
+
+            submitButton.disabled = true;
+            submitButton.textContent = "Sending...";
+
+            try {
+
+                const response = await fetch(
+                    "http://127.0.0.1:8000/report-problem",
+                    {
+                        method: "POST",
+
+                        
+headers: {
+    "Content-Type": "application/json",
+    "Authorization": "Bearer " + localStorage.getItem("access_token")
+},
+
+
+                        body: JSON.stringify({
+                            issue_type: issueType,
+                            description: description
+                        })
+                    }
+                );
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    alert(data.detail || "Could not send your report.");
+                    return;
+                }
+
+                alert("Your report has been sent successfully!");
+
+                document.getElementById("issueType").value = "";
+                document.getElementById("reportDescription").value = "";
+
+            } catch (error) {
+
+                console.error("Report error:", error);
+                alert("Could not connect to Nexa server.");
+
+            } finally {
+
+                submitButton.disabled = false;
+                submitButton.textContent = "Submit";
+
+            }
+        }
+
+    </script>
 
 </body>
 

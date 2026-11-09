@@ -1,0 +1,1111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nexa - Audio Call</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #111;
+            color: white;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .call-container {
+            width: 100%;
+            max-width: 430px;
+            height: 100vh;
+            max-height: 850px;
+            background: #1b1b1b;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            padding: 60px 25px 40px;
+        }
+
+        .call-top {
+            text-align: center;
+        }
+
+        .call-top h2 {
+            font-size: 18px;
+            font-weight: normal;
+            color: #aaa;
+            margin-bottom: 10px;
+        }
+
+        .call-top p {
+            font-size: 15px;
+            color: #888;
+        }
+
+        .call-avatar {
+            width: 130px;
+            height: 130px;
+            border-radius: 50%;
+            overflow: hidden;
+            background: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 55px;
+            margin-bottom: 25px;
+        }
+
+        .call-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .call-user-name {
+            font-size: 27px;
+            margin-bottom: 8px;
+        }
+
+        .call-status {
+            color: #aaa;
+            font-size: 16px;
+        }
+
+        .call-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .end-call {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            border: none;
+            background: #b3261e;
+            color: white;
+            font-size: 30px;
+            cursor: pointer;
+        }
+
+        .end-call:hover {
+            opacity: 0.85;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="call-container">
+
+    <div class="call-top">
+        <h2>Audio Call</h2>
+        <p id="callTimer">00:00</p>
+    </div>
+
+    <div class="call-user">
+        <div class="call-avatar" id="callAvatar">
+            👤
+        </div>
+
+        <h1 class="call-user-name" id="callUserName">
+            User
+        </h1>
+
+        <p class="call-status" id="callStatus">
+            Calling...
+        </p>
+    </div>
+
+    <div class="call-controls">
+        <button class="end-call" onclick="endAudioCall()">
+            ☎
+        </button>
+    </div>
+
+</div>
+
+<script>
+
+const token = localStorage.getItem("access_token");
+const callId = Number(localStorage.getItem("activeCallId"));
+
+const chatUser =
+    localStorage.getItem("chatUser") || "User";
+
+const chatUserId =
+    Number(localStorage.getItem("chatUserId"));
+    // =========================
+// INCOMING CALL CHECK
+// =========================
+
+async function checkIncomingCall() {
+
+    if (!token) {
+        return;
+    }
+
+    try {
+
+        const response = await fetch(
+            "http://127.0.0.1:8000/calls/incoming",
+            {
+                headers: {
+                    "Authorization": "Bearer " + token
+                }
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            return;
+        }
+
+        if (data.calls && data.calls.length > 0) {
+
+            const incomingCall = data.calls[0];
+
+            localStorage.setItem(
+                "incomingCallId",
+                incomingCall.call_id
+            );
+
+            localStorage.setItem(
+                "incomingCallerId",
+                incomingCall.caller_id
+            );
+
+            localStorage.setItem(
+                "incomingCallerName",
+                incomingCall.caller_name
+            );
+
+            showIncomingCall(
+                incomingCall
+            );
+        }
+
+    } catch (error) {
+
+        console.error(
+            "Incoming call error:",
+            error
+        );
+    }
+}
+function showIncomingCall(call) {
+
+    let incomingBox =
+        document.getElementById("incomingCallBox");
+
+    if (incomingBox) {
+        return;
+    }
+
+    incomingBox =
+        document.createElement("div");
+
+    incomingBox.id =
+        "incomingCallBox";
+
+    incomingBox.innerHTML = `
+        <div class="incoming-call-box">
+
+            <div class="incoming-icon">
+                📞
+            </div>
+
+            <h2>
+                Incoming Audio Call
+            </h2>
+
+            <p>
+                ${call.caller_name || "User"}
+            </p>
+
+            <div class="incoming-buttons">
+
+                <button
+                    class="decline-button"
+                    onclick="declineCall()">
+                    Decline
+                </button>
+
+                <button
+                    class="accept-button"
+                    onclick="acceptCall()">
+                    Accept
+                </button>
+
+            </div>
+
+        </div>
+    `;
+
+    document.body.appendChild(
+        incomingBox
+    );
+}
+// =========================
+// ACCEPT INCOMING CALL
+// =========================
+
+async function acceptCall() {
+
+    const incomingCallId =
+        Number(localStorage.getItem("incomingCallId"));
+
+    if (!incomingCallId) {
+        alert("Could not identify the incoming call.");
+        return;
+    }
+
+    try {
+
+        // Get microphone
+        if (!localStream) {
+            localStream =
+                await navigator.mediaDevices.getUserMedia({
+                    audio: true,
+                    video: false
+                });
+        }
+        
+
+        // Create WebRTC connection
+        peerConnection =
+            new RTCPeerConnection(rtcConfig);
+
+        // Add microphone
+        localStream.getTracks().forEach(function(track) {
+
+            peerConnection.addTrack(
+                track,
+                localStream
+            );
+
+        });
+
+        // Receive remote audio
+        peerConnection.ontrack = function(event) {
+
+            let remoteAudio =
+                document.getElementById("remoteAudio");
+
+            if (!remoteAudio) {
+
+                remoteAudio =
+                    document.createElement("audio");
+
+                remoteAudio.id = "remoteAudio";
+                remoteAudio.autoplay = true;
+
+                document.body.appendChild(
+                    remoteAudio
+                );
+            }
+
+            remoteAudio.srcObject =
+                event.streams[0];
+        };
+
+        // Send ICE candidates
+        peerConnection.onicecandidate =
+            async function(event) {
+
+                if (!event.candidate) {
+                    return;
+                }
+
+                await fetch(
+                    "http://127.0.0.1:8000/calls/signal",
+                    {
+                        method: "POST",
+
+                        headers: {
+                            "Content-Type": "application/json",
+                            "Authorization":
+                                "Bearer " + token
+                        },
+
+                        body: JSON.stringify({
+                            call_id: incomingCallId,
+                            signal_type: "ice-candidate",
+                            signal_data:
+                                event.candidate.toJSON()
+                        })
+                    }
+                );
+            };
+
+
+        // Get Offer
+        const response =
+            await fetch(
+                "http://127.0.0.1:8000/calls/" +
+                incomingCallId +
+                "/signals",
+                {
+                    headers: {
+                        "Authorization":
+                            "Bearer " + token
+                    }
+                }
+            );
+
+        const data =
+            await response.json();
+
+        if (!response.ok) {
+            alert("Could not get call offer.");
+            return;
+        }
+
+
+        const offer =
+            data.signals.find(function(signal) {
+
+                return signal.signal_type === "offer";
+
+            });
+
+
+        if (!offer) {
+
+            alert("Call offer not found.");
+            return;
+        }
+
+
+        // Set remote Offer
+        await peerConnection.setRemoteDescription(
+            new RTCSessionDescription(
+                offer.signal_data
+            )
+        );
+
+
+        // Create Answer
+        const answer =
+            await peerConnection.createAnswer();
+
+        await peerConnection.setLocalDescription(
+            answer
+        );
+
+
+        // Send Answer
+        await fetch(
+            "http://127.0.0.1:8000/calls/signal",
+            {
+                method: "POST",
+
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization":
+                        "Bearer " + token
+                },
+
+                body: JSON.stringify({
+                    call_id: incomingCallId,
+                    signal_type: "answer",
+                    signal_data: answer
+                })
+            }
+        );
+
+
+        // Remove incoming call box
+        const incomingBox =
+            document.getElementById(
+                "incomingCallBox"
+            );
+
+        if (incomingBox) {
+            incomingBox.remove();
+        }
+
+
+        localStorage.setItem(
+            "activeCallId",
+            incomingCallId
+        );
+
+        localStorage.removeItem(
+            "incomingCallId"
+        );
+
+        localStorage.removeItem(
+            "incomingCallerId"
+        );
+
+        localStorage.removeItem(
+            "incomingCallerName"
+        );
+
+
+        document.getElementById(
+            "callStatus"
+        ).textContent = "Connected";
+
+
+    } catch (error) {
+
+        console.error(
+            "Accept call error:",
+            error
+        );
+
+        alert(
+            "Could not accept the call."
+        );
+    }
+}
+// =========================
+// DECLINE INCOMING CALL
+// =========================
+
+async function declineCall() {
+
+    const incomingCallId =
+        Number(localStorage.getItem("incomingCallId"));
+
+    if (!incomingCallId) {
+        return;
+    }
+
+    try {
+
+        await fetch(
+            "http://127.0.0.1:8000/calls/" +
+            incomingCallId +
+            "/end",
+            {
+                method: "PUT",
+
+                headers: {
+                    "Authorization":
+                        "Bearer " + token
+                }
+            }
+        );
+
+        localStorage.removeItem(
+            "incomingCallId"
+        );
+
+        localStorage.removeItem(
+            "incomingCallerId"
+        );
+
+        localStorage.removeItem(
+            "incomingCallerName"
+        );
+
+        window.location.href =
+            "calls.html";
+
+    } catch (error) {
+
+        console.error(
+            "Decline call error:",
+            error
+        );
+
+        alert(
+            "Could not decline the call."
+        );
+    }
+}
+
+document.getElementById("callUserName").textContent = chatUser;
+
+
+// Load user profile picture
+async function loadCallUser() {
+
+    if (!chatUserId || !token) {
+        return;
+    }
+
+    try {
+
+        const response = await fetch(
+            "http://127.0.0.1:8000/users/" + chatUserId,
+            {
+                headers: {
+                    "Authorization": "Bearer " + token
+                }
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            return;
+        }
+
+        const avatar =
+            document.getElementById("callAvatar");
+
+        if (data.profile_picture) {
+
+            avatar.innerHTML =
+                `<img src="http://127.0.0.1:8000${data.profile_picture}">`;
+
+        }
+
+    } catch (error) {
+
+        console.error("Could not load call user:", error);
+
+    }
+}
+
+loadCallUser();
+
+
+// Call timer
+let seconds = 0;
+
+const timer = setInterval(function () {
+
+    seconds++;
+
+    const minutes =
+        Math.floor(seconds / 60);
+
+    const remainingSeconds =
+        seconds % 60;
+
+    document.getElementById("callTimer").textContent =
+        String(minutes).padStart(2, "0") +
+        ":" +
+        String(remainingSeconds).padStart(2, "0");
+
+}, 1000);
+
+
+// End call
+async function endAudioCall() {
+
+    if (!callId) {
+
+        window.location.href = "calls.html";
+
+        return;
+    }
+
+    clearInterval(timer);
+
+    try {
+
+        const response = await fetch(
+            "http://127.0.0.1:8000/calls/" + callId + "/end",
+            {
+                method: "PUT",
+                headers: {
+                    "Authorization": "Bearer " + token
+                }
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+
+            alert(
+                data.detail ||
+                "Could not end the call."
+            );
+
+            return;
+        }
+
+        localStorage.removeItem("activeCallId");
+
+        window.location.href = "calls.html";
+
+    } catch (error) {
+
+        console.error("End call error:", error);
+
+        alert("Cannot connect to Nexa server.");
+    }
+}
+// =========================
+// MICROPHONE
+// =========================
+
+let localStream = null;
+
+async function startMicrophone() {
+
+    try {
+
+        localStream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: false
+        });
+
+        console.log("Microphone access granted");
+
+        document.getElementById("callStatus").textContent =
+            "Microphone connected";
+
+    } catch (error) {
+
+        console.error("Microphone error:", error);
+
+        document.getElementById("callStatus").textContent =
+            "Microphone access denied";
+
+        alert("Nexa needs microphone permission for audio calls.");
+    }
+}
+
+startMicrophone();
+// =========================
+// WEBRTC AUDIO CONNECTION
+// =========================
+
+let peerConnection = null;
+let processedIceCandidates = new Set();
+const rtcConfig = {
+    iceServers: [
+        {
+            urls: "stun:stun.l.google.com:19302"
+        }
+    ]
+};
+
+
+async function createAudioConnection() {
+
+    peerConnection = new RTCPeerConnection(rtcConfig);
+
+    // Add microphone to WebRTC
+    if (localStream) {
+
+        localStream.getTracks().forEach(function(track) {
+
+            peerConnection.addTrack(
+                track,
+                localStream
+            );
+
+        });
+    }
+// =========================
+// CHECK CALL STATUS
+// =========================
+
+async function checkCallStatus() {
+
+    const activeCallId =
+        Number(localStorage.getItem("activeCallId"));
+
+    if (!activeCallId || !token) {
+        return;
+    }
+
+    try {
+
+        const response = await fetch(
+            "http://127.0.0.1:8000/calls/" +
+            activeCallId +
+            "/status",
+            {
+                headers: {
+                    "Authorization":
+                        "Bearer " + token
+                }
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            return;
+        }
+
+        if (data.call_status === "ended") {
+
+            endCallLocally();
+
+        }
+
+    } catch (error) {
+
+        console.error(
+            "Call status error:",
+            error
+        );
+    }
+}
+// =========================
+// WAIT FOR ANSWER
+// =========================
+
+async function checkForAnswer() {
+
+    if (!peerConnection || !callId) {
+        return;
+    }
+
+    try {
+
+        const response = await fetch(
+            "http://127.0.0.1:8000/calls/" +
+            callId +
+            "/signals",
+            {
+                headers: {
+                    "Authorization":
+                        "Bearer " + token
+                }
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            return;
+        }
+
+        const answer =
+            data.signals.find(function(signal) {
+
+                return signal.signal_type === "answer";
+
+            });
+
+        if (!answer) {
+            return;
+        }
+
+        // Make sure we don't set the same answer again
+        if (
+            peerConnection.remoteDescription
+        ) {
+            return;
+        }
+
+        await peerConnection.setRemoteDescription(
+            new RTCSessionDescription(
+                answer.signal_data
+            )
+        );
+
+        document.getElementById(
+            "callStatus"
+        ).textContent = "Connected";
+
+        console.log(
+            "Call connected successfully"
+        );
+
+    } catch (error) {
+
+        console.error(
+            "Answer error:",
+            error
+        );
+
+    }
+}
+// =========================
+// CHECK ICE CANDIDATES
+// =========================
+// =========================
+// CHECK ICE CANDIDATES
+// =========================
+
+async function checkForIceCandidates() {
+
+    if (!peerConnection || !callId) {
+        return;
+    }
+
+    try {
+
+        const response = await fetch(
+            "http://127.0.0.1:8000/calls/" +
+            callId +
+            "/signals",
+            {
+                headers: {
+                    "Authorization":
+                        "Bearer " + token
+                }
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            return;
+        }
+
+        const candidates = data.signals.filter(
+            function(signal) {
+                return signal.signal_type === "ice-candidate";
+            }
+        );
+
+        for (const signal of candidates) {
+
+            const candidateData =
+                JSON.stringify(signal.signal_data);
+
+            // Don't add the same candidate twice
+            if (
+                processedIceCandidates.has(
+                    candidateData
+                )
+            ) {
+                continue;
+            }
+
+            try {
+
+                const candidate =
+                    new RTCIceCandidate(
+                        signal.signal_data
+                    );
+
+                await peerConnection.addIceCandidate(
+                    candidate
+                );
+
+                processedIceCandidates.add(
+                    candidateData
+                );
+
+            } catch (error) {
+
+                console.error(
+                    "ICE candidate error:",
+                    error
+                );
+            }
+        }
+
+    } catch (error) {
+
+        console.error(
+            "Could not get ICE candidates:",
+            error
+        );
+    }
+}
+// =========================
+// CHECK CALL STATUS
+// =========================
+
+async function checkCallStatus() {
+
+    const activeCallId =
+        Number(localStorage.getItem("activeCallId"));
+
+    if (!activeCallId || !token) {
+        return;
+    }
+
+    try {
+
+        const response = await fetch(
+            "http://127.0.0.1:8000/calls/" +
+            activeCallId +
+            "/status",
+            {
+                headers: {
+                    "Authorization":
+                        "Bearer " + token
+                }
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            return;
+        }
+
+        if (data.call_status === "ended") {
+
+            endCallLocally();
+
+        }
+
+    } catch (error) {
+
+        console.error(
+            "Call status error:",
+            error
+        );
+    }
+}
+function endCallLocally() {
+
+    if (peerConnection) {
+
+        peerConnection.close();
+
+        peerConnection = null;
+    }
+
+    if (localStream) {
+
+        localStream.getTracks().forEach(
+            function(track) {
+                track.stop();
+            }
+        );
+
+        localStream = null;
+    }
+
+    localStorage.removeItem(
+        "activeCallId"
+    );
+
+    window.location.href =
+        "calls.html";
+}
+
+setInterval(
+    checkForAnswer,
+    1000
+);
+setInterval(
+    checkForIceCandidates,
+    1000
+);
+setInterval(
+    checkCallStatus,
+    1000
+);
+    // Receive remote audio
+    peerConnection.ontrack = function(event) {
+
+        let remoteAudio =
+            document.getElementById("remoteAudio");
+
+        if (!remoteAudio) {
+
+            remoteAudio =
+                document.createElement("audio");
+
+            remoteAudio.id = "remoteAudio";
+            remoteAudio.autoplay = true;
+
+            document.body.appendChild(remoteAudio);
+        }
+
+        remoteAudio.srcObject = event.streams[0];
+    };
+
+
+    // Send ICE candidates to backend
+    peerConnection.onicecandidate = async function(event) {
+
+        if (!event.candidate) {
+            return;
+        }
+
+        try {
+
+            await fetch(
+                "http://127.0.0.1:8000/calls/signal",
+                {
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization":
+                            "Bearer " + token
+                    },
+
+                    body: JSON.stringify({
+                        call_id: callId,
+                        signal_type: "ice-candidate",
+                        signal_data: event.candidate.toJSON()
+                    })
+                }
+            );
+
+        } catch (error) {
+
+            console.error(
+                "ICE candidate error:",
+                error
+            );
+
+        }
+    };
+
+
+    // Create Offer
+    const offer =
+        await peerConnection.createOffer();
+
+    await peerConnection.setLocalDescription(
+        offer
+    );
+
+
+    // Send Offer to backend
+    const response =
+        await fetch(
+            "http://127.0.0.1:8000/calls/signal",
+            {
+                method: "POST",
+
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization":
+                        "Bearer " + token
+                },
+
+                body: JSON.stringify({
+                    call_id: callId,
+                    signal_type: "offer",
+                    signal_data: offer
+                })
+            }
+        );
+
+
+    const data = await response.json();
+
+    if (!response.ok) {
+
+        console.error(
+            "Offer error:",
+            data
+        );
+
+        return;
+    }
+
+    document.getElementById("callStatus").textContent =
+        "Calling...";
+}
+
+
+createAudioConnection();
+</script>
+
+</body>
+</html>

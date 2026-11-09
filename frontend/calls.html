@@ -53,36 +53,19 @@
                 ⌕
             </span>
 
-            <input
-                type="text"
-                placeholder="Search calls..."
-            >
+<input
+    type="text"
+    id="callSearchInput"
+    placeholder="Search calls..."
+    oninput="searchCalls()">    
 
         </div>
 
 
         <!-- Empty Calls -->
-        <main class="empty-calls">
+        <main id="callsList" class="calls-list">
 
-            <div class="empty-call-icon">
-                ☎
-            </div>
-
-            <h2>
-                No calls yet
-            </h2>
-
-            <p>
-                Your recent calls will appear here.
-            </p>
-
-            <button class="start-call">
-                Start a call
-            </button>
-
-        </main>
-
-
+</main>
         <!-- Bottom Navigation -->
         <nav class="calls-bottom-nav">
 
@@ -149,19 +132,213 @@
 
 
     <script>
+function selectCallFilter(button) {
 
-        function selectCallFilter(button) {
+    document
+        .querySelectorAll('.call-filters .filter')
+        .forEach(function (item) {
+            item.classList.remove('active');
+        });
 
-            document
-                .querySelectorAll('.call-filters .filter')
-                .forEach(function (item) {
+    button.classList.add('active');
 
-                    item.classList.remove('active');
+    const filterType =
+        button.textContent.trim().toLowerCase();
 
-                });
+    const callItems =
+        document.querySelectorAll(".call-item");
 
-            button.classList.add('active');
+    callItems.forEach(function(callItem) {
+
+        const callStatus =
+            callItem.dataset.callStatus;
+
+        if (filterType === "all") {
+
+            callItem.style.display = "flex";
+
+        } else if (filterType === "missed") {
+
+            if (callStatus === "missed") {
+                callItem.style.display = "flex";
+            } else {
+                callItem.style.display = "none";
+            }
+
         }
+
+    });
+}
+async function loadCalls() {
+
+    const token =
+        localStorage.getItem("access_token");
+
+    if (!token) {
+        window.location.href = "index.html";
+        return;
+    }
+
+    const callsList =
+        document.getElementById("callsList");
+
+    try {
+
+        const response = await fetch(
+            "http://127.0.0.1:8000/calls",
+            {
+                method: "GET",
+                headers: {
+                    "Authorization": "Bearer " + token
+                }
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+
+            callsList.innerHTML = `
+                <p class="calls-message">
+                    ${data.detail || "Could not load calls."}
+                </p>
+            `;
+
+            return;
+        }
+
+        const calls = data.calls || [];
+
+        if (calls.length === 0) {
+
+            callsList.innerHTML = `
+                <div class="empty-calls">
+                    <div class="empty-call-icon">
+                        ☎
+                    </div>
+
+                    <h2>
+                        No calls yet
+                    </h2>
+
+                    <p>
+                        Your recent calls will appear here.
+                    </p>
+                </div>
+            `;
+
+            return;
+        }
+
+        callsList.innerHTML = "";
+
+        calls.forEach(function(call) {
+
+            const callItem =
+                document.createElement("div");
+
+            callItem.className = "call-item";
+            callItem.dataset.callStatus =
+                 call.call_status;
+            const directionIcon =
+                call.direction === "incoming"
+                    ? "↙"
+                    : "↗";
+callItem.innerHTML = `
+    <div class="call-avatar">
+        👤
+    </div>
+
+    <div class="call-info">
+        <h3>${call.other_user_name || "User"}</h3>
+
+        <p>
+            ${call.direction === "outgoing" ? "↗" : "↙"}
+            ${call.direction === "outgoing" ? "Outgoing" : "Incoming"}
+            • ${call.call_type === "audio" ? "Audio" : "Video"}
+        </p>
+    </div>
+
+    <div class="call-time">
+        ${formatCallTime(call.started_at)}
+    </div>
+`;
+
+            callsList.appendChild(callItem);
+        });
+
+    } catch (error) {
+
+        console.error("Calls error:", error);
+
+        callsList.innerHTML = `
+            <p class="calls-message">
+                Could not connect to the server.
+            </p>
+        `;
+    }
+}
+
+
+function formatCallTime(dateString) {
+
+    if (!dateString) {
+        return "";
+    }
+
+    const date =
+        new Date(dateString);
+
+    return date.toLocaleString();
+}
+
+
+loadCalls();
+function searchCalls() {
+
+    const searchInput =
+        document.getElementById("callSearchInput");
+
+    const searchText =
+        searchInput.value.trim().toLowerCase();
+
+    const callItems =
+        document.querySelectorAll(".call-item");
+
+    callItems.forEach(function(callItem) {
+
+        const userName =
+            callItem
+                .querySelector(".call-info h3")
+                ?.textContent
+                .toLowerCase() || "";
+
+        const username =
+            callItem
+                .querySelector(".call-info p")
+                ?.textContent
+                .toLowerCase() || "";
+
+        if (
+            userName.includes(searchText) ||
+            username.includes(searchText)
+        ) {
+            callItem.style.display = "flex";
+        } else {
+            callItem.style.display = "none";
+        }
+
+    });
+}
+function formatCallTime(dateString) {
+
+    const date = new Date(dateString);
+
+    return date.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit"
+    });
+}
 
     </script>
 

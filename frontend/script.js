@@ -508,8 +508,7 @@ function sendSupportMessage() {
 /* =========================
    Save Profile Changes
 ========================= */
-
-function saveProfileChanges() {
+async function saveProfileChanges() {
 
     const name =
         document.getElementById("nameInput").value.trim();
@@ -527,7 +526,7 @@ function saveProfileChanges() {
         document.getElementById("aboutInput").value.trim();
 
 
-    /* Check empty fields */
+    /* Check required fields */
 
     if (
         name === "" ||
@@ -535,58 +534,96 @@ function saveProfileChanges() {
         email === "" ||
         about === ""
     ) {
-
         alert("Please fill in all required fields.");
-
         return;
     }
 
 
-    /* Original email */
+    /* Get token */
 
-    const oldEmail =
-        localStorage.getItem("nexaEmail") ||
-        "heba@example.com";
+    const token =
+        localStorage.getItem("access_token");
 
-
-    /* Save profile data */
-
-    localStorage.setItem("nexaName", name);
-
-    localStorage.setItem("nexaUsername", username);
-
-    localStorage.setItem("nexaPhone", phone);
-
-    localStorage.setItem("nexaAbout", about);
+    if (!token) {
+        window.location.href = "index.html";
+        return;
+    }
 
 
-    /* =========================
-       Email Changed
-    ========================= */
+    try {
 
-    if (email !== oldEmail) {
+        const response = await fetch(
+            "http://127.0.0.1:8000/users/me",
+            {
+                method: "PUT",
+
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer " + token
+                },
+
+                body: JSON.stringify({
+                    full_name: name,
+                    username: username,
+                    email: email,
+                    about: about
+                })
+            }
+        );
+
+
+        const data = await response.json();
+
+
+        if (!response.ok) {
+
+            alert(
+                data.detail ||
+                "Could not save profile changes."
+            );
+
+            return;
+        }
+
+
+        /* Update local storage */
 
         localStorage.setItem(
-            "pendingNexaEmail",
+            "nexaName",
+            name
+        );
+
+        localStorage.setItem(
+            "nexaUsername",
+            username
+        );
+
+        localStorage.setItem(
+            "nexaPhone",
+            phone
+        );
+
+        localStorage.setItem(
+            "nexaEmail",
             email
         );
 
-        window.location.href =
-            "verify-email.html";
+        localStorage.setItem(
+            "nexaAbout",
+            about
+        );
 
-        return;
+
+        alert("Your changes have been saved.");
+
+    } catch (error) {
+
+        console.error("Save profile error:", error);
+
+        alert(
+            "Could not connect to the server."
+        );
     }
-
-
-    /* Email didn't change */
-
-    localStorage.setItem(
-        "nexaEmail",
-        email
-    );
-
-    alert("Your changes have been saved.");
-
 }
 
 
@@ -887,33 +924,69 @@ document.addEventListener(
 
     }
 );
-function changePhoneNumber() {
+
+async function changePhoneNumber() {
 
     const newPhone =
         document.getElementById("newPhone").value.trim();
 
-    if (newPhone === "") {
+    const countryCode =
+        document.getElementById("countryCode").value;
 
+    if (!newPhone) {
         alert("Please enter your new phone number.");
-
         return;
     }
 
-    if (newPhone.length < 8) {
-
+    if (!/^\d{8,12}$/.test(newPhone)) {
         alert("Please enter a valid phone number.");
-
         return;
     }
 
-    localStorage.setItem(
-        "pendingNexaPhone",
-        newPhone
-    );
+    const token = localStorage.getItem("access_token");
 
-    window.location.href =
-        "verify.html";
+    if (!token) {
+        alert("Please login first.");
+        window.location.href = "login.html";
+        return;
+    }
+
+    const fullPhone = countryCode + newPhone;
+
+    try {
+
+        const response = await fetch(
+            "http://127.0.0.1:8000/phone/send-code?new_phone=" +
+            encodeURIComponent(fullPhone),
+            {
+                method: "POST",
+                headers: {
+                    "Authorization": "Bearer " + token
+                }
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            alert(data.detail || "Could not send verification code.");
+            return;
+        }
+
+        localStorage.setItem("pendingNexaPhone", fullPhone);
+
+        alert("Verification code generated. Check the backend Terminal.");
+
+        window.location.href = "verify-phone-change.html";
+
+    } catch (error) {
+
+        console.error("Phone Error:", error);
+        alert("Cannot connect to Nexa server.");
+
+    }
 }
+
 function loadVerificationPhone() {
 
     const phone =
@@ -1594,24 +1667,149 @@ async function searchUsers() {
         const data = await response.json();
 
         if (!response.ok) {
-            resultsContainer.innerHTML =
-                "<p>User not found.</p>";
+
+            resultsContainer.innerHTML = `
+                <p class="search-user-message">
+                    User not found.
+                </p>
+            `;
+
             return;
         }
 
+
         resultsContainer.innerHTML = `
-            <div class="search-user-result">
-                <strong>${data.username}</strong>
-                <span>${data.full_name || ""}</span>
+
+            <div
+                class="search-user-result"
+                onclick="openSearchedUser(${data.user_id})">
+
+                <div class="search-user-avatar">
+
+                    ${
+                        data.profile_picture
+                        ? `<img
+                            src="${data.profile_picture}"
+                            alt="${data.full_name || "User"}">`
+                        : "👤"
+                    }
+
+                </div>
+
+
+                <div class="search-user-info">
+
+                    <strong>
+                        ${data.full_name || "User"}
+                    </strong>
+
+                    <span>
+                        @${data.username}
+                    </span>
+
+                </div>
+
             </div>
+
         `;
 
     } catch (error) {
 
-        console.error("User search error:", error);
+        console.error(
+            "User search error:",
+            error
+        );
 
-        resultsContainer.innerHTML =
-            "<p>Cannot connect to Nexa server.</p>";
+        resultsContainer.innerHTML = `
+            <p class="search-user-message">
+                Cannot connect to Nexa server.
+            </p>
+        `;
+    }
+}
+function openSearchedUser(userId) {
+
+    localStorage.setItem(
+        "chatUserId",
+        userId
+    );
+
+    /*
+    Create/open conversation
+    */
+
+    createConversation(userId);
+}
+
+
+async function createConversation(userId) {
+
+    const token =
+        localStorage.getItem("access_token");
+
+    try {
+
+        const response = await fetch(
+            "http://127.0.0.1:8000/conversations",
+            {
+                method: "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/json",
+
+                    "Authorization":
+                        "Bearer " + token
+                },
+
+                body: JSON.stringify({
+                    user_id: userId
+                })
+            }
+        );
+
+
+        const data =
+            await response.json();
+
+
+        if (!response.ok) {
+
+            alert(
+                data.detail ||
+                "Could not open conversation."
+            );
+
+            return;
+        }
+
+
+        localStorage.setItem(
+            "conversationId",
+            data.conversation_id
+        );
+
+
+        localStorage.setItem(
+            "chatType",
+            "private"
+        );
+
+
+        window.location.href =
+            "chat.html";
+
+
+    } catch (error) {
+
+        console.error(
+            "Create conversation error:",
+            error
+        );
+
+        alert(
+            "Cannot connect to Nexa server."
+        );
     }
 }
 // =========================
@@ -1918,5 +2116,175 @@ document.addEventListener("DOMContentLoaded", function () {
 document.addEventListener("DOMContentLoaded", function () {
 
     loadContacts();
+
+});
+document.getElementById(
+    "chatUserHeader"
+).addEventListener(
+    "click",
+    function() {
+
+        const chatType =
+            localStorage.getItem("chatType");
+
+        if (chatType === "group") {
+
+            window.location.href =
+                "group-details.html";
+
+        }
+
+    }
+);
+
+// =========================
+// Load New Phone Number
+// =========================
+
+document.addEventListener("DOMContentLoaded", function () {
+
+    const phone = localStorage.getItem("pendingNexaPhone");
+
+    const phoneElement = document.getElementById("verifyNumber");
+
+    if (phone && phoneElement) {
+        phoneElement.textContent = phone;
+    }
+
+});
+
+
+// =========================
+// Verify New Phone
+// =========================
+
+async function verifyNewPhone() {
+
+    const inputs = document.querySelectorAll(".otp-container input");
+
+    let code = "";
+
+    inputs.forEach(input => {
+        code += input.value.trim();
+    });
+
+    if (!/^\d{6}$/.test(code)) {
+        alert("Please enter the 6-digit verification code.");
+        return;
+    }
+
+    const token = localStorage.getItem("access_token");
+
+    const button = document.getElementById("verifyPhoneButton");
+
+    button.disabled = true;
+
+    try {
+
+        // Step 1: Verify OTP
+
+        const verifyResponse = await fetch(
+            "http://127.0.0.1:8000/phone/verify-code?otp_code=" +
+            encodeURIComponent(code),
+            {
+                method: "POST",
+                headers: {
+                    "Authorization": "Bearer " + token
+                }
+            }
+        );
+
+        const verifyData = await verifyResponse.json();
+
+        if (!verifyResponse.ok) {
+            alert(verifyData.detail || "Verification failed.");
+            return;
+        }
+
+        // Step 2: Change Phone Number
+
+        const changeResponse = await fetch(
+            "http://127.0.0.1:8000/phone/change",
+            {
+                method: "PUT",
+                headers: {
+                    "Authorization": "Bearer " + token
+                }
+            }
+        );
+
+        const changeData = await changeResponse.json();
+
+        if (!changeResponse.ok) {
+            alert(changeData.detail || "Could not update phone number.");
+            return;
+        }
+
+        localStorage.removeItem("pendingNexaPhone");
+
+        alert("Your phone number has been changed successfully!");
+
+        window.location.href = "account.html";
+
+    } catch (error) {
+
+        console.error("Phone verification error:", error);
+
+        alert("Cannot connect to Nexa server.");
+
+    } finally {
+
+        button.disabled = false;
+
+    }
+
+}
+
+// =========================
+// Load Current Phone Number
+// =========================
+
+document.addEventListener("DOMContentLoaded", async function () {
+
+    const phoneElement = document.getElementById("currentPhone");
+
+    // Run only on Phone Number page
+    if (!phoneElement) return;
+
+    const token = localStorage.getItem("access_token");
+
+    if (!token) {
+        alert("Please login first.");
+        window.location.href = "login.html";
+        return;
+    }
+
+    try {
+
+        const response = await fetch(
+            "http://127.0.0.1:8000/users/me",
+            {
+                method: "GET",
+                headers: {
+                    "Authorization": "Bearer " + token
+                }
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            alert(data.detail || "Could not load your phone number.");
+            return;
+        }
+
+        phoneElement.textContent = data.phone;
+
+    } catch (error) {
+
+        console.error("Load phone error:", error);
+        alert("Cannot connect to Nexa server.");
+
+    }
 
 });

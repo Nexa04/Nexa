@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Nexa - Group Info</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <div class="group-container">
+
+        <!-- Header -->
+        <header class="group-header">
+
+            <button
+                class="group-back"
+                onclick="window.history.back()">
+                ←
+            </button>
+
+            <h1>Group info</h1>
+
+        </header>
+
+
+        <!-- Group Image -->
+        <div class="group-info-image">
+
+            <div
+                class="group-image-preview"
+                id="groupImagePreview">
+
+                👥
+
+            </div>
+
+            <label
+                for="groupImage"
+                class="group-image-button">
+
+                Add group photo
+
+            </label>
+
+            <input
+                type="file"
+                id="groupImage"
+                accept="image/*"
+                hidden>
+
+        </div>
+
+
+        <!-- Group Name -->
+        <div class="group-name-section">
+
+            <label for="groupName">
+                Group name
+            </label>
+
+            <input
+                type="text"
+                id="groupName"
+                placeholder="Enter group name"
+                maxlength="100">
+
+        </div>
+
+
+        <!-- Selected Members -->
+        <div class="group-selected-section">
+
+            <h3>
+                Members
+            </h3>
+
+            <div
+                id="groupMembersList"
+                class="group-members-list">
+            </div>
+
+        </div>
+
+
+        <!-- Create Button -->
+        <button
+            class="create-group-button"
+            id="createGroupButton"
+            onclick="createGroup()">
+
+            Create group
+
+        </button>
+
+    </div>
+
+
+    <script>
+
+        const token =
+            localStorage.getItem("access_token");
+
+
+        if (!token) {
+
+            window.location.href =
+                "index.html";
+
+        }
+
+
+        /*
+        =========================
+        Get Selected Members
+        =========================
+        */
+
+        const selectedUsers =
+            JSON.parse(
+                localStorage.getItem("groupMembers")
+            ) || [];
+
+
+        const groupMembersList =
+            document.getElementById(
+                "groupMembersList"
+            );
+
+
+        /*
+        =========================
+        Display Members
+        =========================
+        */
+
+        function displayMembers() {
+
+            groupMembersList.innerHTML = "";
+
+
+            if (selectedUsers.length === 0) {
+
+                groupMembersList.innerHTML = `
+                    <p>
+                        No members selected.
+                    </p>
+                `;
+
+                return;
+            }
+
+
+            selectedUsers.forEach(
+                function(user) {
+
+                    const member =
+                        document.createElement(
+                            "div"
+                        );
+
+                    member.className =
+                        "group-info-member";
+
+
+                    member.innerHTML = `
+
+                        <div class="group-info-avatar">
+                            👤
+                        </div>
+
+                        <div class="group-info-member-text">
+
+                            <strong>
+                                ${user.full_name || "User"}
+                            </strong>
+
+                            <span>
+                                ${
+                                    user.username
+                                    || ""
+                                }
+                            </span>
+
+                        </div>
+
+                    `;
+
+
+                    groupMembersList.appendChild(
+                        member
+                    );
+
+                }
+            );
+
+        }
+
+
+        displayMembers();
+
+
+        /*
+        =========================
+        Group Image Preview
+        =========================
+        */
+
+        const groupImage =
+            document.getElementById(
+                "groupImage"
+            );
+
+
+        const groupImagePreview =
+            document.getElementById(
+                "groupImagePreview"
+            );
+
+
+        groupImage.addEventListener(
+            "change",
+            function() {
+
+                const file =
+                    groupImage.files[0];
+
+
+                if (!file) {
+                    return;
+                }
+
+
+                const reader =
+                    new FileReader();
+
+
+                reader.onload =
+                    function(event) {
+
+                        groupImagePreview.innerHTML = `
+                            <img
+                                src="${event.target.result}"
+                                alt="Group photo">
+                        `;
+
+                    };
+
+
+                reader.readAsDataURL(file);
+
+            }
+        );
+
+
+        /*
+        =========================
+        Create Group
+        =========================
+        */
+
+        async function createGroup() {
+
+            const groupName =
+                document.getElementById(
+                    "groupName"
+                ).value.trim();
+
+
+            if (groupName === "") {
+
+                alert(
+                    "Please enter a group name."
+                );
+
+                return;
+
+            }
+
+
+            if (selectedUsers.length === 0) {
+
+                alert(
+                    "Please select at least one member."
+                );
+
+                return;
+
+            }
+
+
+            const memberIds =
+                selectedUsers.map(
+                    function(user) {
+                        return user.user_id;
+                    }
+                );
+
+
+            try {
+
+                const response =
+                    await fetch(
+                        "http://127.0.0.1:8000/groups",
+                        {
+                            method: "POST",
+
+                            headers: {
+                                "Content-Type":
+                                    "application/json",
+
+                                "Authorization":
+                                    "Bearer " + token
+                            },
+
+                            body: JSON.stringify({
+
+                                group_name:
+                                    groupName,
+
+                                member_ids:
+                                    memberIds
+
+                            })
+                        }
+                    );
+
+
+                const data =
+                    await response.json();
+
+
+                if (!response.ok) {
+
+                    alert(
+                        data.detail ||
+                        "Could not create group."
+                    );
+
+                    return;
+
+                }
+
+
+                /*
+                Save group information
+                */
+
+                localStorage.setItem(
+                    "conversationId",
+                    data.conversation_id
+                );
+
+
+                localStorage.setItem(
+                    "chatUser",
+                    groupName
+                );
+
+
+                localStorage.setItem(
+                    "chatType",
+                    "group"
+                );
+
+
+                /*
+                Remove temporary
+                selected members
+                */
+
+                localStorage.removeItem(
+                    "groupMembers"
+                );
+
+
+                /*
+                Open group chat
+                */
+
+                window.location.href =
+                    "chat.html";
+
+
+            } catch (error) {
+
+                console.error(
+                    "Create group error:",
+                    error
+                );
+
+
+                alert(
+                    "Cannot connect to Nexa server."
+                );
+
+            }
+
+        }
+
+    </script>
+
+</body>
+
+</html>

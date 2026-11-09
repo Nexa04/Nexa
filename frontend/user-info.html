@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Nexa - User Info</title>
+
+    <link rel="stylesheet" href="style.css">
+
+
+</head>
+
+
+<body>
+
+    <div class="user-info-page">
+
+        <!-- Header -->
+
+        <header class="user-info-header">
+
+            <button
+                class="back-button"
+                onclick="history.back()"
+            >
+                ←
+            </button>
+    <h2>
+                User Information
+            </h2>
+
+        </header>
+
+
+        <!-- User Information -->
+
+        <main class="user-info-content">
+
+            <div
+                class="user-info-avatar"
+                id="userInfoAvatar"
+            >
+                👤
+            </div>
+
+            <h1
+                class="user-info-name"
+                id="userInfoName"
+            >
+                User
+            </h1>
+
+            <div
+                class="user-info-username"
+                id="userInfoUsername"
+            >
+                @username
+            </div>
+
+
+            <div class="user-info-card">
+
+                <div class="info-row">
+
+                    <div class="info-label">
+                        About
+                    </div>
+
+                    <div
+                        class="info-value"
+                        id="userInfoAbout"
+                    >
+                        —
+                    </div>
+
+                </div>
+
+
+                <div class="info-row">
+
+                    <div class="info-label">
+                        Phone
+                    </div>
+
+                    <div
+                        class="info-value"
+                        id="userInfoPhone"
+                    >
+                        —
+                    </div>
+
+                </div>
+
+
+                <div class="info-row">
+
+                    <div class="info-label">
+                        Email
+                    </div>
+
+                    <div
+                        class="info-value"
+                        id="userInfoEmail"
+                    >
+                        —
+                    </div>
+
+                </div>
+
+            </div>
+
+        </main>
+
+    </div>
+
+
+    <script>
+
+        const token =
+            localStorage.getItem("access_token");
+
+        const chatUserId =
+            localStorage.getItem("chatUserId");
+
+
+        // =========================
+        // Check Login
+        // =========================
+
+        if (!token) {
+
+            window.location.href = "index.html";
+
+        }
+
+
+        // =========================
+        // Load User Information
+        // =========================
+
+        async function loadUserInfo() {
+
+            if (!chatUserId) {
+
+                alert("User not found.");
+                history.back();
+
+                return;
+            }
+
+
+            try {
+
+                const response = await fetch(
+                    "http://127.0.0.1:8000/users/" + chatUserId,
+                    {
+                        method: "GET",
+
+                        headers: {
+                            "Authorization":
+                                "Bearer " + token
+                        }
+                    }
+                );
+
+
+                const data =
+                    await response.json();
+
+
+                if (!response.ok) {
+
+                    alert(
+                        data.detail ||
+                        "Could not load user information."
+                    );
+
+                    return;
+                }
+
+
+                // =========================
+                // Name
+                // =========================
+
+                document.getElementById(
+                    "userInfoName"
+                ).textContent =
+                    data.full_name || "User";
+
+
+                // =========================
+                // Username
+                // =========================
+
+                document.getElementById(
+                    "userInfoUsername"
+                ).textContent =
+                    data.username
+                    ? "@" + data.username
+                    : "@username";
+
+
+                // =========================
+                // About
+                // =========================
+
+                document.getElementById(
+                    "userInfoAbout"
+                ).textContent =
+                    data.about || "No about information";
+
+
+                // =========================
+                // Phone
+                // =========================
+
+                document.getElementById(
+                    "userInfoPhone"
+                ).textContent =
+                    data.phone || "Not available";
+
+
+                // =========================
+                // Email
+                // =========================
+
+                document.getElementById(
+                    "userInfoEmail"
+                ).textContent =
+                    data.email || "Not available";
+
+
+                // =========================
+                // Profile Picture
+                // =========================
+
+                const avatar =
+                    document.getElementById(
+                        "userInfoAvatar"
+                    );
+
+
+                if (data.profile_picture) {
+
+                    let imageUrl =
+                        data.profile_picture;
+
+
+                    if (!imageUrl.startsWith("http")) {
+
+                        imageUrl =
+                            "http://127.0.0.1:8000" +
+                            imageUrl;
+
+                    }
+
+
+                    avatar.innerHTML = `
+                        <img
+                            src="${imageUrl}"
+                            alt="Profile"
+                        >
+                    `;
+
+                } else {
+
+                    avatar.innerHTML = "👤";
+
+                }
+
+            } catch (error) {
+
+                console.error(
+                    "User info error:",
+                    error
+                );
+
+                alert(
+                    "Cannot connect to Nexa server."
+                );
+
+            }
+
+        }
+
+
+        loadUserInfo();
+
+    </script>
+
+</body>
+
+</html>

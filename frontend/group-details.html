@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Nexa - Group Info</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <div class="group-details-container">
+
+        <!-- Header -->
+        <header class="group-details-header">
+
+            <button
+                class="group-details-back"
+                onclick="history.back()">
+                ←
+            </button>
+
+            <h1>Group info</h1>
+
+        </header>
+
+
+        <!-- Group Information -->
+        <main class="group-details-content">
+
+            <!-- Group Photo -->
+            <div class="group-details-photo">
+
+                <div
+                    class="group-details-avatar"
+                    id="groupAvatar">
+                    👥
+                </div>
+
+            </div>
+
+
+            <!-- Group Name -->
+            <h2
+                id="groupName">
+                Loading...
+            </h2>
+
+
+            <p
+                class="group-details-member-count"
+                id="memberCount">
+                Loading members...
+            </p>
+
+
+            <!-- Members -->
+            <section class="group-details-section">
+
+                <h3>
+                    Members
+                </h3>
+
+                <div
+                    id="groupMembersList"
+                    class="group-details-members">
+                </div>
+
+            </section>
+
+
+            <!-- Delete Group -->
+            <button
+                id="deleteGroupButton"
+                class="delete-group-button"
+                onclick="deleteGroup()"
+                style="display: none;">
+
+                Delete group
+
+            </button>
+
+        </main>
+
+    </div>
+
+
+    <script>
+
+        const token =
+            localStorage.getItem("access_token");
+
+        const conversationId =
+            localStorage.getItem("conversationId");
+
+
+        /*
+        =========================
+        Check Login
+        =========================
+        */
+
+        if (!token) {
+
+            window.location.href =
+                "index.html";
+
+        }
+
+
+        if (!conversationId) {
+
+            alert(
+                "Group not found."
+            );
+
+            window.location.href =
+                "home.html";
+
+        }
+
+
+        /*
+        =========================
+        Load Group Information
+        =========================
+        */
+
+        async function loadGroupInfo() {
+
+            try {
+
+                const response =
+                    await fetch(
+                        "http://127.0.0.1:8000/groups/"
+                        + conversationId,
+                        {
+                            method: "GET",
+
+                            headers: {
+                                "Authorization":
+                                    "Bearer " + token
+                            }
+                        }
+                    );
+
+
+                const data =
+                    await response.json();
+
+
+                if (!response.ok) {
+
+                    alert(
+                        data.detail ||
+                        "Could not load group information."
+                    );
+
+                    return;
+
+                }
+
+
+                /*
+                Group Name
+                */
+
+                document.getElementById(
+                    "groupName"
+                ).textContent =
+                    data.group_name || "Group";
+
+
+                /*
+                Member Count
+                */
+
+                const members =
+                    data.members || [];
+
+
+                document.getElementById(
+                    "memberCount"
+                ).textContent =
+                    members.length +
+                    (
+                        members.length === 1
+                        ? " member"
+                        : " members"
+                    );
+
+
+                /*
+                Group Picture
+                */
+
+                const groupAvatar =
+                    document.getElementById(
+                        "groupAvatar"
+                    );
+
+
+                if (data.group_picture) {
+
+                    groupAvatar.innerHTML = `
+                        <img
+                            src="${data.group_picture}"
+                            alt="Group photo">
+                    `;
+
+                }
+
+
+                /*
+                Members
+                */
+
+                const membersList =
+                    document.getElementById(
+                        "groupMembersList"
+                    );
+
+
+                membersList.innerHTML = "";
+
+
+                members.forEach(
+                    function(member) {
+
+                        const memberItem =
+                            document.createElement(
+                                "div"
+                            );
+
+
+                        memberItem.className =
+                            "group-details-member";
+
+
+                        memberItem.innerHTML = `
+
+                            <div
+                                class="group-details-member-avatar">
+
+                                ${
+                                    member.profile_picture
+                                    ? `
+                                        <img
+                                            src="${member.profile_picture}"
+                                            alt="${member.full_name || "User"}">
+                                      `
+                                    : "👤"
+                                }
+
+                            </div>
+
+
+                            <div
+                                class="group-details-member-info">
+
+                                <strong>
+                                    ${
+                                        member.full_name ||
+                                        "User"
+                                    }
+                                </strong>
+
+                                <span>
+                                    ${
+                                        member.username
+                                        ? "@" + member.username
+                                        : ""
+                                    }
+                                </span>
+
+                            </div>
+
+
+                            ${
+                                member.is_creator
+                                ? `
+                                    <span
+                                        class="group-creator-label">
+                                        Creator
+                                    </span>
+                                  `
+                                : ""
+                            }
+
+                        `;
+
+
+                        membersList.appendChild(
+                            memberItem
+                        );
+
+                    }
+                );
+
+
+                /*
+                Show Delete Button
+                only for Creator
+                */
+
+                const currentUserId =
+                    Number(
+                        localStorage.getItem(
+                            "user_id"
+                        )
+                    );
+
+
+                if (
+                    Number(data.created_by)
+                    === currentUserId
+                ) {
+
+                    document.getElementById(
+                        "deleteGroupButton"
+                    ).style.display =
+                        "block";
+
+                }
+
+
+            } catch (error) {
+
+                console.error(
+                    "Load group info error:",
+                    error
+                );
+
+
+                alert(
+                    "Cannot connect to Nexa server."
+                );
+
+            }
+
+        }
+
+
+        /*
+        =========================
+        Delete Group
+        =========================
+        */
+
+        async function deleteGroup() {
+
+            const confirmed =
+                confirm(
+                    "Are you sure you want to delete this group?"
+                );
+
+
+            if (!confirmed) {
+                return;
+            }
+
+
+            try {
+
+                const response =
+                    await fetch(
+                        "http://127.0.0.1:8000/groups/"
+                        + conversationId,
+                        {
+                            method: "DELETE",
+
+                            headers: {
+                                "Authorization":
+                                    "Bearer " + token
+                            }
+                        }
+                    );
+
+
+                const data =
+                    await response.json();
+
+
+                if (!response.ok) {
+
+                    alert(
+                        data.detail ||
+                        "Could not delete group."
+                    );
+
+                    return;
+
+                }
+
+
+                localStorage.removeItem(
+                    "conversationId"
+                );
+
+                localStorage.removeItem(
+                    "chatUser"
+                );
+
+                localStorage.removeItem(
+                    "chatType"
+                );
+
+
+                window.location.href =
+                    "home.html";
+
+
+            } catch (error) {
+
+                console.error(
+                    "Delete group error:",
+                    error
+                );
+
+
+                alert(
+                    "Cannot connect to Nexa server."
+                );
+
+            }
+
+        }
+
+
+        /*
+        =========================
+        Start
+        =========================
+        */
+
+        document.addEventListener(
+            "DOMContentLoaded",
+            function() {
+
+                loadGroupInfo();
+
+            }
+        );
+
+    </script>
+
+</body>
+
+</html>

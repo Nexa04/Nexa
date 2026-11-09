@@ -1,0 +1,71 @@
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Nexa - Verify New Phone</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <div class="verify-container">
+
+        <button
+            class="back-button"
+            onclick="window.location.href='phone-number.html'">
+            ←
+        </button>
+
+        <div class="verify-icon">
+            💬
+        </div>
+
+        <h1>Verify your new phone number</h1>
+
+        <p class="verify-text">
+            Enter the 6-digit verification code.
+        </p>
+
+        <p class="verify-number" id="verifyNumber"></p>
+
+        <div class="otp-container">
+
+            <input type="text" maxlength="1" inputmode="numeric">
+            <input type="text" maxlength="1" inputmode="numeric">
+            <input type="text" maxlength="1" inputmode="numeric">
+            <input type="text" maxlength="1" inputmode="numeric">
+            <input type="text" maxlength="1" inputmode="numeric">
+            <input type="text" maxlength="1" inputmode="numeric">
+
+        </div>
+
+        <button
+            class="verify-button"
+            id="verifyPhoneButton"
+            onclick="verifyNewPhone()">
+
+            <span>Verify</span>
+            <span>→</span>
+
+        </button>
+
+        <div class="register-footer">
+
+            <div>N E X A</div>
+
+            <p>PEOPLE • PRIVACY • SAFETY</p>
+
+        </div>
+
+    </div>
+
+    <script src="script.js"></script>
+
+</body>
+
+</html>

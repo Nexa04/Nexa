@@ -8,6 +8,7 @@
     <title>Nexa - Chat</title>
 
     <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 
 <body>
@@ -24,10 +25,11 @@
                 ←
             </button>
 
-            <div class="chat-user">
-
-                <div class="chat-avatar">
-                </div>
+                <div
+    class="chat-user"
+    onclick="openChatInfo()">
+                <div class="chat-avatar" id="chatAvatar">
+    </div>
 
                 <div class="chat-user-info">
 
@@ -40,10 +42,13 @@
 
             <div class="chat-actions">
 
-                <button class="chat-action">
-                    ☎
-                </button>
-            </div>
+    <button
+        class="chat-action"
+        onclick="startAudioCall()">
+        ☎
+    </button>
+
+</div>
 
         </header>
 
@@ -67,9 +72,71 @@
 
         <footer class="message-area">
 
-            <button class="add-button">
-                +
-            </button>
+            <button class="add-button" id="addButton" type="button">
+    +
+</button>
+
+<div class="attachment-menu" id="attachmentMenu" hidden>
+
+    <button type="button" data-action="photos">
+        <span class="attachment-icon">
+            <i data-lucide="image"></i>
+        </span>
+        <span>Photos &amp; Videos</span>
+    </button>
+
+    <button type="button" data-action="document">
+        <span class="attachment-icon">
+            <i data-lucide="file-text"></i>
+        </span>
+        <span>Document</span>
+    </button>
+
+    <button type="button" data-action="camera">
+        <span class="attachment-icon">
+            <i data-lucide="camera"></i>
+        </span>
+        <span>Camera</span>
+    </button>
+
+    <button type="button" data-action="location">
+        <span class="attachment-icon">
+            <i data-lucide="map-pin"></i>
+        </span>
+        <span>Location</span>
+    </button>
+
+    <button type="button" data-action="contact">
+        <span class="attachment-icon">
+            <i data-lucide="contact-round"></i>
+        </span>
+        <span>Contact</span>
+    </button>
+
+</div>
+
+<input
+    type="file"
+    id="mediaInput"
+    accept="image/*,video/*"
+    multiple
+    hidden
+>
+
+<input
+    type="file"
+    id="documentInput"
+    accept=".pdf,.doc,.docx,.txt,.xlsx,.pptx"
+    hidden
+>
+
+<input
+    type="file"
+    id="cameraInput"
+    accept="image/*"
+    capture="environment"
+    hidden
+>
 
             <div class="message-input-container">
 
@@ -79,13 +146,33 @@
                     placeholder="Type a message..."
                 >
 
-                <button class="emoji-button">
-                    ☺
-                </button>
+               <button
+    type="button"
+    class="emoji-button"
+    id="emojiButton"
+    title="Choose emoji"
+>
+    😊
+</button>
 
-                <button class="attachment-button">
-                    📎
-                </button>
+<div class="emoji-picker" id="emojiPicker" hidden>
+    <button type="button">😀</button>
+    <button type="button">😂</button>
+    <button type="button">😍</button>
+    <button type="button">🥰</button>
+    <button type="button">😊</button>
+    <button type="button">😭</button>
+    <button type="button">😎</button>
+    <button type="button">😘</button>
+    <button type="button">❤️</button>
+    <button type="button">👍</button>
+    <button type="button">👎</button>
+    <button type="button">🎉</button>
+    <button type="button">🔥</button>
+    <button type="button">🙏</button>
+    <button type="button">💔</button>
+    <button type="button">🤣</button>
+</div>
 
             </div>
 
@@ -128,21 +215,76 @@
         }
 
 
-        // =========================
-        // Show Chat User Name
-        // =========================
+       // =========================
+// Show Chat User Name + Profile Picture
+// =========================
 
-        if (chatUser) {
+async function loadChatUser() {
 
-            document.getElementById("chatName").textContent =
-                chatUser;
+    if (!chatUser) {
+        return;
+    }
+
+    // Show user name
+    document.getElementById("chatName").textContent = chatUser;
+
+    const chatAvatar = document.getElementById("chatAvatar");
+    const chatUserId = localStorage.getItem("chatUserId");
+
+    if (!chatUserId || !token) {
+        chatAvatar.innerHTML = "👤";
+        return;
+    }
+
+    try {
+
+        const response = await fetch(
+            "http://127.0.0.1:8000/users/" + chatUserId,
+            {
+                method: "GET",
+                headers: {
+                    "Authorization": "Bearer " + token
+                }
+            }
+        );
+
+        const userData = await response.json();
+
+        if (response.ok && userData.profile_picture) {
+
+            let imageUrl = userData.profile_picture;
+
+            // Convert /uploads/... to full backend URL
+            if (!imageUrl.startsWith("http")) {
+                imageUrl =
+                    "http://127.0.0.1:8000" + imageUrl;
+            }
+
+            chatAvatar.innerHTML = `
+                <img
+                    src="${imageUrl}"
+                    alt="Profile"
+                >
+            `;
+
+        } else {
+
+            chatAvatar.innerHTML = "👤";
 
         }
 
+    } catch (error) {
 
-        // =========================
-        // Load Messages
-        // =========================
+        console.error(
+            "Could not load chat profile picture:",
+            error
+        );
+
+        chatAvatar.innerHTML = "👤";
+    }
+}
+
+loadChatUser();
 
 // =========================
 // Load Messages
@@ -209,6 +351,10 @@ async function loadMessages() {
             Number(
                 localStorage.getItem("user_id")
             );
+            const chatUserId =
+    Number(
+        localStorage.getItem("chatUserId")
+    );
 
 
         // =========================
@@ -305,25 +451,76 @@ if (
 
     }
 }
+// =========================
+// Display Message Text
+// =========================
+
+if (message.message_text) {
+    const textElement = document.createElement("div");
+    textElement.className = "message-text";
+    textElement.textContent = message.message_text;
+    messageElement.appendChild(textElement);
+}
 
 
-messageElement.innerHTML = `
-    <div class="message-text">
-        ${message.message_text}
-    </div>
+// =========================
+// Display Attachments
+// =========================
 
-    ${
-        Number(message.sender_id) === currentUserId
-        ? `
-            <div class="message-status">
-                ${messageStatus}
-            </div>
-          `
-        : ""
+if (message.attachment_url) {
+
+    const attachmentUrl = message.attachment_url.startsWith("http")
+        ? message.attachment_url
+        : "http://127.0.0.1:8000" + message.attachment_url;
+
+    if (message.attachment_type === "image") {
+
+        const image = document.createElement("img");
+
+        image.src = attachmentUrl;
+        image.alt = message.attachment_name || "Shared image";
+        image.className = "chat-attachment-image";
+
+        messageElement.appendChild(image);
+
+    } else if (message.attachment_type === "video") {
+
+        const video = document.createElement("video");
+
+        video.src = attachmentUrl;
+        video.controls = true;
+        video.className = "chat-attachment-video";
+
+        messageElement.appendChild(video);
+
+    } else if (message.attachment_type === "document") {
+
+        const link = document.createElement("a");
+
+        link.href = attachmentUrl;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.className = "chat-attachment-document";
+        link.textContent = "📄 " + (message.attachment_name || "Open document");
+
+        messageElement.appendChild(link);
     }
-`;
+}
 
 
+// =========================
+// Display Message Status
+// =========================
+
+if (Number(message.sender_id) === currentUserId) {
+
+    const statusElement = document.createElement("div");
+
+    statusElement.className = "message-status";
+    statusElement.textContent = messageStatus;
+
+    messageElement.appendChild(statusElement);
+}
             messagesArea.appendChild(
                 messageElement
             );
@@ -631,7 +828,285 @@ messageElement.innerHTML = `
 
             }
         );
+function openChatInfo() {
 
+    const chatType = localStorage.getItem("chatType");
+
+    if (chatType === "group") {
+
+        window.location.href = "group-details.html";
+
+    } else {
+
+        window.location.href = "user-info.html";
+
+    }
+}
+async function startAudioCall() {
+
+    const token =
+        localStorage.getItem("access_token");
+
+    if (!token) {
+        window.location.href = "index.html";
+        return;
+    }
+
+    const chatType =
+        localStorage.getItem("chatType");
+
+    if (chatType === "group") {
+        alert("Audio calls are not available for groups yet.");
+        return;
+    }
+
+    const receiverId =
+        Number(
+            localStorage.getItem("chatUserId")
+        );
+
+    if (!receiverId) {
+        alert("Could not identify the user.");
+        return;
+    }
+
+    try {
+
+        const response = await fetch(
+            "http://127.0.0.1:8000/calls",
+            {
+                method: "POST",
+
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization":
+                        "Bearer " + token
+                },
+
+                body: JSON.stringify({
+                    receiver_id: receiverId,
+                    call_type: "audio"
+                })
+            }
+        );
+
+        const data =
+            await response.json();
+
+        if (!response.ok) {
+
+            alert(
+                data.detail ||
+                "Could not start the call."
+            );
+
+            return;
+        }
+
+localStorage.setItem("activeCallId", data.call_id);
+
+window.location.href = "audio-call.html";
+        alert(
+            "Audio call started with " +
+            (localStorage.getItem("chatUser") || "User")
+        );
+
+    } catch (error) {
+
+        console.error(
+            "Start call error:",
+            error
+        );
+
+        alert(
+            "Cannot connect to Nexa server."
+        );
+    }
+}
+const emojiButton = document.getElementById("emojiButton");
+const emojiPicker = document.getElementById("emojiPicker");
+const messageInput = document.getElementById("messageInput");
+
+emojiButton.addEventListener("click", function () {
+    emojiPicker.hidden = !emojiPicker.hidden;
+});
+
+emojiPicker.querySelectorAll("button").forEach(function (button) {
+    button.addEventListener("click", function () {
+        const emoji = button.textContent;
+        const start = messageInput.selectionStart;
+        const end = messageInput.selectionEnd;
+        const text = messageInput.value;
+
+        messageInput.value =
+            text.slice(0, start) + emoji + text.slice(end);
+
+        messageInput.focus();
+
+        const cursorPosition = start + emoji.length;
+        messageInput.setSelectionRange(cursorPosition, cursorPosition);
+
+        emojiPicker.hidden = true;
+    });
+});
+
+document.addEventListener("click", function (event) {
+    if (
+        !emojiPicker.contains(event.target) &&
+        !emojiButton.contains(event.target)
+    ) {
+        emojiPicker.hidden = true;
+    }
+});
+// =========================
+// Attachment Menu
+// =========================
+
+const addButton = document.getElementById("addButton");
+const attachmentMenu = document.getElementById("attachmentMenu");
+
+const mediaInput = document.getElementById("mediaInput");
+const documentInput = document.getElementById("documentInput");
+const cameraInput = document.getElementById("cameraInput");
+
+addButton.addEventListener("click", function () {
+    attachmentMenu.hidden = !attachmentMenu.hidden;
+});
+
+attachmentMenu.addEventListener("click", function (event) {
+    const button = event.target.closest("button[data-action]");
+
+    if (!button) return;
+
+    const action = button.dataset.action;
+    attachmentMenu.hidden = true;
+
+    if (action === "photos") {
+        mediaInput.click();
+    }
+
+    if (action === "document") {
+        documentInput.click();
+    }
+
+    if (action === "camera") {
+        cameraInput.click();
+    }
+
+    if (action === "location") {
+        if (!navigator.geolocation) {
+            alert("Location is not supported by this browser.");
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            function (position) {
+                const latitude = position.coords.latitude;
+                const longitude = position.coords.longitude;
+
+                const locationUrl =
+                    `https://www.google.com/maps?q=${latitude},${longitude}`;
+
+                messageInput.value =
+                    `My location: ${locationUrl}`;
+
+                messageInput.focus();
+            },
+            function () {
+                alert("Could not access your location. Check browser permissions.");
+            }
+        );
+    }
+
+    if (action === "contact") {
+        const contact = prompt(
+            "Enter contact name and phone number:"
+        );
+
+        if (contact && contact.trim()) {
+            messageInput.value =
+                `Contact: ${contact.trim()}`;
+
+            messageInput.focus();
+        }
+    }
+});
+
+
+
+document.addEventListener("click", function (event) {
+    if (
+        !attachmentMenu.contains(event.target) &&
+        !addButton.contains(event.target)
+    ) {
+        attachmentMenu.hidden = true;
+    }
+});
+lucide.createIcons();
+// =========================
+// Upload Selected Image / File
+// =========================
+
+async function uploadAttachment(file) {
+    if (!file) return;
+
+    if (!conversationId || !token) {
+        alert("Please log in and open a conversation first.");
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+        const response = await fetch(
+            `http://127.0.0.1:8000/conversations/${conversationId}/attachments`,
+            {
+                method: "POST",
+                headers: {
+                    "Authorization": "Bearer " + token
+                },
+                body: formData
+            }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            alert(data.detail || "File upload failed.");
+            return;
+        }
+
+// Reload messages to display the uploaded attachment
+await loadMessages();
+
+// Update message status
+if (data.message_id) {
+    await updateMessageStatus(data.message_id, "sent");
+}
+    } catch (error) {
+        console.error("Upload error:", error);
+        alert("Could not connect to Nexa server.");
+    }
+}
+
+mediaInput.addEventListener("change", function () {
+    if (this.files.length > 0) {
+        uploadAttachment(this.files[0]);
+    }
+});
+
+documentInput.addEventListener("change", function () {
+    if (this.files.length > 0) {
+        uploadAttachment(this.files[0]);
+    }
+});
+
+cameraInput.addEventListener("change", function () {
+    if (this.files.length > 0) {
+        uploadAttachment(this.files[0]);
+    }
+});
     </script>
 
 </body>
